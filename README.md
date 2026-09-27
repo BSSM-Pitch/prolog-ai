@@ -17,19 +17,6 @@ pip install -e ".[dev]"
 cp .env.example .env
 ```
 
-## 폴더 구조와 담당자
-
-| 경로 | 설명 | 담당 |
-| --- | --- | --- |
-| `src/prolog_ai/core/` | 모든 모듈이 공유하는 실행 뼈대 | @DEV_A @DEV_B |
-| `src/prolog_ai/modules/nlcd/` | NLCD 모듈 | @DEV_A |
-| `src/prolog_ai/modules/rex/` | REX 모듈 | @DEV_A |
-| `src/prolog_ai/modules/aiq/` | AIQ 모듈 | @DEV_A |
-| `src/prolog_ai/modules/scds/` | SCDS 모듈 | @DEV_B |
-| `src/prolog_ai/modules/ssm/` | SSM 모듈 | @DEV_B |
-| `evals/` | 모듈별 평가 케이스와 실행 스크립트 | |
-| `docs/specs/` | 모듈 스펙 문서 | |
-
 ## NLCD/ASS ↔ SCDS 필드 매핑
 
 ASS `ConfirmedCharacter`(`docs/specs/claude/api 명세/ASS.md` 2.4)와 SCDS `Character`(`docs/specs/claude/api 명세/SCDS.md` 2.1)는
