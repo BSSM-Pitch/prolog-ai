@@ -22,12 +22,22 @@ from prolog_ai.core.status import RunStatus
 
 
 class InputValidationError(Exception):
-    """validate 콜백이 입력을 거부할 때 던진다."""
+    """validate 콜백이 입력을 거부할 때 던진다.
 
-    def __init__(self, message: str, details: dict[str, Any] | None = None):
+    code는 기본 INVALID_INPUT이지만, AIQ의 INVALID_SELECTION_RANGE처럼
+    모듈 명세가 더 구체적인 코드를 요구하는 경우 지정할 수 있다.
+    """
+
+    def __init__(
+        self,
+        message: str,
+        details: dict[str, Any] | None = None,
+        code: ErrorCode = ErrorCode.INVALID_INPUT,
+    ):
         super().__init__(message)
         self.message = message
         self.details = details or {}
+        self.code = code
 
 
 def make_skip_response(
@@ -81,6 +91,6 @@ def run_module(
         return make_success(data, meta)
 
     except InputValidationError as exc:
-        return make_error(ErrorCode.INVALID_INPUT, exc.message, exc.details)
+        return make_error(exc.code, exc.message, exc.details)
     except Exception as exc:  # noqa: BLE001 - 최후 방어선: 절대 죽지 않는다
         return make_error(ai_errors.failed, f"예상하지 못한 오류가 발생했습니다: {exc}")
