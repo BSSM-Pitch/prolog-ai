@@ -1,6 +1,7 @@
 import json
 
 import pytest
+from pydantic import BaseModel
 
 from prolog_ai.core.errors import (
     HTTP_STATUS,
@@ -9,6 +10,9 @@ from prolog_ai.core.errors import (
     make_error,
     make_success,
 )
+from prolog_ai.core.evidence import filter_unverified, is_present, normalize
+from prolog_ai.core.llm import _build_fake_instance
+from prolog_ai.core.runner import make_skip_response
 from prolog_ai.core.status import (
     AIQMessageStatus,
     NLCDStatus,
@@ -105,3 +109,86 @@ def test_run_status_values_exist_in_module_status():
 
 def test_skipped_reason_value():
     assert SkippedReason.NO_REFERENCE_DATA == "NO_REFERENCE_DATA"
+
+
+# --- evidence.py ---
+
+
+def test_normalize_ignores_whitespace_and_quote_style():
+    assert normalize("책임감이  강하지만\n") == normalize("책임감이 강하지만")
+    assert normalize("“고인”") == normalize('"고인"')
+
+
+def test_is_present_true_when_evidence_in_source():
+    assert is_present("책임감이 강하지만", "그는 책임감이\n강하지만 자신감이 부족했다.")
+
+
+def test_is_present_false_when_evidence_missing():
+    assert not is_present("전혀 다른 문장", "그는 책임감이 강하지만 자신감이 부족했다.")
+
+
+def test_is_present_false_for_empty_evidence():
+    assert not is_present("", "아무 원문")
+
+
+def test_filter_unverified_removes_only_unverified_items():
+    data = {
+        "personality_tags": [
+            {"value": "책임감 강함", "evidence": "책임감이 강하지만"},
+            {"value": "지어낸 항목", "evidence": "원문에 없는 문장"},
+        ]
+    }
+    filtered, removed = filter_unverified(
+        data, "그는 책임감이 강하지만 자신감이 부족했다.", ["personality_tags"]
+    )
+    assert filtered["personality_tags"] == [{"value": "책임감 강함", "evidence": "책임감이 강하지만"}]
+    assert removed == 1
+
+
+def test_filter_unverified_does_not_mutate_input():
+    data = {"items": [{"value": "a", "evidence": "없는 근거"}]}
+    filter_unverified(data, "전혀 다른 원문", ["items"])
+    assert data["items"] == [{"value": "a", "evidence": "없는 근거"}]
+
+
+# --- llm.py ---
+
+
+class _NestedFake(BaseModel):
+    label: str
+
+
+class _FakeSchema(BaseModel):
+    required_text: str
+    required_count: int
+    required_flag: bool
+    required_list: list[str]
+    required_nested: _NestedFake
+    optional_text: str | None = None
+
+
+def test_build_fake_instance_fills_only_required_fields_with_typed_defaults():
+    fake = _build_fake_instance(_FakeSchema)
+    assert fake == {
+        "required_text": "",
+        "required_count": 0,
+        "required_flag": False,
+        "required_list": [],
+        "required_nested": {"label": ""},
+    }
+    _FakeSchema.model_validate(fake)  # 스키마 자체를 통과해야 한다
+
+
+# --- runner.py ---
+
+
+def test_make_skip_response_shape():
+    result = make_skip_response(
+        RunStatus.SKIPPED,
+        {"check_id": "chk_1"},
+        {"skipped_reason": SkippedReason.NO_REFERENCE_DATA.value},
+    )
+    assert result == {
+        "data": {"check_id": "chk_1", "status": "skipped"},
+        "meta": {"skipped_reason": "NO_REFERENCE_DATA"},
+    }
