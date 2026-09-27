@@ -1,6 +1,0 @@
-/src/prolog_ai/core/          @DEV_A @DEV_B
-/src/prolog_ai/modules/nlcd/  @DEV_A
-/src/prolog_ai/modules/rex/   @DEV_A
-/src/prolog_ai/modules/aiq/   @DEV_A
-/src/prolog_ai/modules/scds/  @DEV_B
-/src/prolog_ai/modules/ssm/   @DEV_B
