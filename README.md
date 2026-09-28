@@ -44,7 +44,7 @@ set -a; source .env; set +a
 | --- | --- | --- |
 | `run_nlcd(source_text)` | 캐릭터 서술 문장 | `personality_tags`, `core_values`, `emotion_keywords` (`[{value, evidence}]`), `influence_relations` (`[{value, type, evidence}]`) |
 | `run_rex(manuscript_text)` | 원고 본문 | `extracted_rules` (`[{description, violation_keywords, evidence, source_chapter}]`) |
-| `run_aiq(question, manuscript_text, scope="whole", selection_range=None)` | 질문, 원고, `whole`/`selection`, `{start, end}` 문자 오프셋 | `content` (답변 문자열) |
+| `run_aiq(question, manuscript_text, scope="whole", selection_range=None, messages=None)` | 질문, 원고, `whole`/`selection`, `{start, end}` 문자 오프셋, 같은 스레드의 이전 메시지(후속 질문일 때, 시간순 `[{role, content}]`. `role`은 `user`/`assistant`. 그 밖의 필드는 무시. 답변이 없는 `pending`·`failed` 메시지는 빼고 넘긴다) | `content` (답변 문자열) |
 | `run_scds(event, world_rules, characters=None)` | 사건 `{character_ids, content}`, WorldRule 목록 `[{rule_id, description, violation_keywords}]`, ASS 확정 캐릭터 목록(선택) | `status`, `rule_result`, 완료 시 `conflicts` (`[{character_id, conflict_target, severity, advice}]`) |
 | `run_ssm(manuscript_text)` | 원고 본문 | `acts`, `nodes`, `edges` (SSM 명세 StructureMap 구조) |
 

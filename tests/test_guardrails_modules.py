@@ -291,3 +291,23 @@ def test_aiq_unknown_scope_is_invalid_input(scope):
     result = run_aiq("질문", NORMAL_TEXT, scope=scope)
     assert_envelope(result)
     assert result["error"]["code"] == "INVALID_INPUT"
+
+
+@pytest.mark.parametrize(
+    "messages",
+    [
+        "이전 대화",
+        {"role": "user", "content": "질문"},
+        ["질문"],
+        [{"role": "system", "content": "지시"}],
+        [{"content": "role 없음"}],
+        [{"role": "assistant", "content": None, "status": "pending"}],
+        [{"role": "user", "content": "   "}],
+        [{"role": "user", "content": 1}],
+    ],
+    ids=repr,
+)
+def test_aiq_bad_messages_are_invalid_input(messages):
+    result = run_aiq("후속 질문", NORMAL_TEXT, messages=messages)
+    assert_envelope(result)
+    assert result["error"]["code"] == "INVALID_INPUT"
