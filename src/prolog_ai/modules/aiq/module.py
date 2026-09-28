@@ -3,34 +3,44 @@
 from typing import Any
 
 from prolog_ai.core.errors import ErrorCode
+from prolog_ai.core.guard import expect_text, expect_type, public_api
 from prolog_ai.core.runner import InputValidationError, run_module
 from prolog_ai.modules.aiq.prompt import build_prompt
 from prolog_ai.modules.aiq.schema import AIQOutput
 
+SCOPES = ("whole", "selection")
+
+
+def _invalid_range(message: str, selection_range: Any) -> InputValidationError:
+    return InputValidationError(
+        message, {"selection_range": selection_range}, code=ErrorCode.INVALID_SELECTION_RANGE
+    )
+
 
 def _validate(data: dict) -> dict:
-    question = data.get("question", "")
-    if not question or not question.strip():
-        raise InputValidationError("question이 비어 있습니다.", {"field": "question"})
+    expect_text(data["question"], "question")
+    manuscript_text = expect_type(data["manuscript_text"], str, "manuscript_text")
 
-    if data.get("scope") == "selection":
-        selection_range = data.get("selection_range")
-        if not selection_range or "start" not in selection_range or "end" not in selection_range:
-            raise InputValidationError(
-                "scope=selection이지만 selection_range가 없습니다.",
-                {"field": "selection_range"},
-                code=ErrorCode.INVALID_SELECTION_RANGE,
-            )
-        if selection_range["start"] >= selection_range["end"]:
-            raise InputValidationError(
-                "selection_range가 올바르지 않습니다.",
-                {"selection_range": selection_range},
-                code=ErrorCode.INVALID_SELECTION_RANGE,
-            )
+    scope = data["scope"]
+    if scope not in SCOPES:
+        raise InputValidationError(
+            "scope는 whole 또는 selection이어야 합니다.", {"field": "scope", "received": scope}
+        )
+
+    if scope == "selection":
+        selection_range = data["selection_range"]
+        if not isinstance(selection_range, dict):
+            raise _invalid_range("scope=selection이지만 selection_range가 없습니다.", selection_range)
+        start, end = selection_range.get("start"), selection_range.get("end")
+        if any(not isinstance(v, int) or isinstance(v, bool) for v in (start, end)):
+            raise _invalid_range("selection_range의 start, end는 정수여야 합니다.", selection_range)
+        if not 0 <= start < end <= len(manuscript_text):
+            raise _invalid_range("selection_range가 원고 범위를 벗어났습니다.", selection_range)
 
     return data
 
 
+@public_api("aiq")
 def run_aiq(
     question: str,
     manuscript_text: str,

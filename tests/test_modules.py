@@ -80,7 +80,7 @@ def test_run_aiq_selection_scope_backwards_range_is_invalid():
 def test_run_aiq_selection_scope_valid_range_succeeds():
     result = run_aiq(
         question="이 문단 어때?",
-        manuscript_text="원고 본문",
+        manuscript_text="원고 본문입니다. 충분히 긴 원고",
         scope="selection",
         selection_range={"start": 0, "end": 10},
     )
