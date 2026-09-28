@@ -154,7 +154,7 @@ HTTP 상태는 `prolog_ai.core.errors.HTTP_STATUS`에도 있다. `SCHEMA_VALIDAT
 | `data`가 있음 | `completed` (SCDS는 `data.status` 값을 그대로 사용: `skipped` / `no_candidate` / `queued` / `completed`) |
 | `error`가 있음 | `failed`, `error`를 그대로 응답에 싣는다 |
 
-AI 호출 한 번의 시간 제한은 30초이고, AIQ만 답변이 길어 90초다. AI 재시도는 패키지 안에서 최대 2회 한다(시간 초과·연결 오류·429·5xx만. 인증 오류 등은 바로 실패). 사용자가 누르는 재시도 API는 같은 함수를 다시 호출하면 된다.
+AI 호출 한 번의 시간 제한은 30초이고, 긴 글을 만드는 AIQ 답변과 SCDS 조언은 90초다. AI 재시도는 패키지 안에서 최대 2회 한다(시간 초과·연결 오류·429·5xx만. 인증 오류 등은 바로 실패). 사용자가 누르는 재시도 API는 같은 함수를 다시 호출하면 된다.
 
 인수인계 요약과 알려진 한계는 `docs/handoff.md`, 미해결 문제는 `docs/specs/claude/WARN.md`에 있다.
 

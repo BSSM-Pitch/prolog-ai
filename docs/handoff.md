@@ -14,7 +14,7 @@
 1. 설치: `pip install git+https://github.com/BSSM-Pitch/prolog-ai.git` (버전 태그는 아직 없음)
 2. 환경변수 `OPENROUTER_API_KEY`(필수), `PROLOG_AI_MODEL`(선택, 기본 `deepseek/deepseek-v4-flash`)을 서버 환경에 넣는다. 운영 환경에는 `USE_FAKE_LLM`을 넣지 않는다. 서버에서 `openrouter.ai`로 나가는 외부 연결이 필요하다. 패키지는 `.env`를 읽지 않는다.
 3. 개발·테스트 환경에서는 `USE_FAKE_LLM=1`로 API 없이 돌릴 수 있다.
-4. 함수는 동기이고 한 번에 수십 초 걸릴 수 있다. 호출 한 번의 제한은 30초(AIQ는 90초)이고 재시도까지 합치면 AIQ는 최악 약 4분 40초다. 비동기 작업(워커)에서 호출하고, 결과로 작업 상태를 정한다(README "백엔드 작업 상태와 연결").
+4. 함수는 동기이고 한 번에 수십 초 걸릴 수 있다. 호출 한 번의 제한은 30초(AIQ·SCDS AI 분석은 90초)이고 재시도까지 합치면 AIQ·SCDS는 최악 약 4분 40초다. 비동기 작업(워커)에서 호출하고, 결과로 작업 상태를 정한다(README "백엔드 작업 상태와 연결").
 5. SCDS는 사건 저장 시 `run_scds_rules`(동기, LLM 없음)로 후보를 먼저 응답하고, `status`가 `queued`면 워커에서 `run_scds_analysis(event, rule_result, characters)`로 AI 분석을 한다. 재시도도 `run_scds_analysis`를 다시 부른다. 확정 캐릭터(ASS ConfirmedCharacter)도 넘겨야 캐릭터 설정이 룰 검출·AI 분석에 들어간다.
 6. `SCHEMA_VALIDATION_FAILED`는 HTTP 상태가 미정이라 `HTTP_STATUS.get(code, 502)`처럼 기본값을 둔다.
 
