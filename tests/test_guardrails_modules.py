@@ -107,7 +107,7 @@ def test_missing_or_unknown_arguments_are_invalid_input(fn):
 
 @pytest.mark.parametrize("module", MODULES)
 def test_llm_failure_returns_module_failed_code(module, monkeypatch):
-    def failed(prompt, *, schema):
+    def failed(prompt, *, schema, **_):
         raise LLMFailedError("network down")
 
     patch_llm(monkeypatch, failed)
@@ -118,7 +118,7 @@ def test_llm_failure_returns_module_failed_code(module, monkeypatch):
 
 @pytest.mark.parametrize("module", MODULES)
 def test_llm_timeout_returns_module_timeout_code(module, monkeypatch):
-    def timeout(prompt, *, schema):
+    def timeout(prompt, *, schema, **_):
         raise LLMTimeoutError("no response in time")
 
     patch_llm(monkeypatch, timeout)
@@ -129,7 +129,7 @@ def test_llm_timeout_returns_module_timeout_code(module, monkeypatch):
 
 @pytest.mark.parametrize("module", MODULES)
 def test_llm_unexpected_exception_does_not_crash(module, monkeypatch):
-    def boom(prompt, *, schema):
+    def boom(prompt, *, schema, **_):
         raise RuntimeError("unexpected")
 
     patch_llm(monkeypatch, boom)
@@ -141,7 +141,7 @@ def test_llm_unexpected_exception_does_not_crash(module, monkeypatch):
 @pytest.mark.parametrize("module", MODULES)
 @pytest.mark.parametrize("raw", [{"garbage": 1}, {}, None, "문자열 응답"], ids=repr)
 def test_schema_mismatched_llm_response(module, raw, monkeypatch):
-    patch_llm(monkeypatch, lambda prompt, *, schema: raw)
+    patch_llm(monkeypatch, lambda prompt, *, schema, **_: raw)
     result = CALLERS[module](NORMAL_TEXT)
     assert_envelope(result)
     assert result["error"]["code"] == "SCHEMA_VALIDATION_FAILED"
@@ -176,7 +176,7 @@ def test_schema_mismatched_llm_response(module, raw, monkeypatch):
     ],
 )
 def test_evidence_not_in_source_is_removed(module, raw, field, monkeypatch):
-    patch_llm(monkeypatch, lambda prompt, *, schema: raw)
+    patch_llm(monkeypatch, lambda prompt, *, schema, **_: raw)
     result = CALLERS[module](NORMAL_TEXT)
     assert_envelope(result)
     assert len(result["data"][field]) == 1
@@ -192,7 +192,7 @@ def test_evidence_not_in_source_is_removed(module, raw, field, monkeypatch):
 )
 def test_scds_skip_paths_never_call_llm(world_rules, status, monkeypatch):
     calls = []
-    patch_llm(monkeypatch, lambda prompt, *, schema: calls.append(prompt))
+    patch_llm(monkeypatch, lambda prompt, *, schema, **_: calls.append(prompt))
     result = run_scds({"character_ids": ["char_001"], "content": NORMAL_TEXT}, world_rules)
     assert_envelope(result)
     assert result["data"]["status"] == status
@@ -232,7 +232,7 @@ def test_scds_rule_engine_crash_returns_rule_engine_error(monkeypatch):
 def test_ssm_one_failing_chunk_returns_error(monkeypatch):
     calls = []
 
-    def second_chunk_fails(prompt, *, schema):
+    def second_chunk_fails(prompt, *, schema, **_):
         calls.append(prompt)
         if len(calls) == 2:
             raise LLMFailedError("chunk 2 failed")

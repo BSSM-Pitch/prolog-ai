@@ -64,7 +64,7 @@ def test_story_unrelated_sentence_does_not_crash(monkeypatch):
 
 
 def test_llm_unexpected_exception_returns_module_ai_failed_error(monkeypatch):
-    def boom(prompt, *, schema):
+    def boom(prompt, *, schema, **_):
         raise LLMFailedError("network down")
 
     monkeypatch.setattr("prolog_ai.core.runner.call_llm", boom)
@@ -73,7 +73,7 @@ def test_llm_unexpected_exception_returns_module_ai_failed_error(monkeypatch):
 
 
 def test_llm_timeout_returns_module_ai_timeout_error(monkeypatch):
-    def timeout(prompt, *, schema):
+    def timeout(prompt, *, schema, **_):
         raise LLMTimeoutError("no response in time")
 
     monkeypatch.setattr("prolog_ai.core.runner.call_llm", timeout)
@@ -82,7 +82,7 @@ def test_llm_timeout_returns_module_ai_timeout_error(monkeypatch):
 
 
 def test_schema_mismatched_llm_response_returns_schema_validation_error(monkeypatch):
-    def wrong_shape(prompt, *, schema):
+    def wrong_shape(prompt, *, schema, **_):
         return {"items": "이건 리스트가 아니라 문자열입니다"}
 
     monkeypatch.setattr("prolog_ai.core.runner.call_llm", wrong_shape)
@@ -91,7 +91,7 @@ def test_schema_mismatched_llm_response_returns_schema_validation_error(monkeypa
 
 
 def test_evidence_not_in_source_is_filtered_and_counted(monkeypatch):
-    def two_items(prompt, *, schema):
+    def two_items(prompt, *, schema, **_):
         return {
             "items": [
                 {"value": "책임감 강함", "evidence": "책임감이 강하지만"},

@@ -31,7 +31,7 @@ def llm_calls(monkeypatch):
     """runner.call_llm을 바꿔 끼운다. responses에 넣은 값을 호출 순서대로 돌려준다."""
     state = {"prompts": [], "responses": []}
 
-    def fake_call(prompt, *, schema):
+    def fake_call(prompt, *, schema, **_):
         state["prompts"].append(prompt)
         response = state["responses"][len(state["prompts"]) - 1]
         if isinstance(response, Exception):

@@ -56,6 +56,7 @@ def run_module(
     output_schema: type[BaseModel],
     evidence_text: str | None = None,
     evidence_fields: list[str] = (),
+    timeout: float | None = None,
 ) -> dict[str, Any]:
     ai_errors = MODULE_AI_ERRORS[module]
 
@@ -64,7 +65,8 @@ def run_module(
 
         try:
             prompt = build_prompt(validated)
-            raw_output = call_llm(prompt, schema=output_schema)
+            llm_options = {} if timeout is None else {"timeout": timeout}
+            raw_output = call_llm(prompt, schema=output_schema, **llm_options)
         except LLMTimeoutError as exc:
             return make_error(ai_errors.timeout, str(exc))
         except LLMFailedError as exc:
