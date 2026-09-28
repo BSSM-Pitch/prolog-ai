@@ -7,6 +7,7 @@
 from typing import Any
 
 from prolog_ai.core.errors import ErrorCode, make_error, make_success
+from prolog_ai.core.guard import expect_type, public_api
 from prolog_ai.core.runner import run_module
 from prolog_ai.modules.ssm.chunking import split_into_chapters
 from prolog_ai.modules.ssm.prompt import build_prompt
@@ -16,8 +17,9 @@ from prolog_ai.modules.ssm.schema import SSMChunkOutput
 MIN_MANUSCRIPT_LENGTH = 1
 
 
+@public_api("ssm")
 def run_ssm(manuscript_text: str) -> dict[str, Any]:
-    stripped = manuscript_text.strip() if manuscript_text else ""
+    stripped = expect_type(manuscript_text, str, "manuscript_text").strip()
     if len(stripped) < MIN_MANUSCRIPT_LENGTH:
         return make_error(
             ErrorCode.MANUSCRIPT_TOO_SHORT,
