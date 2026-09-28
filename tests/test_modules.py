@@ -2,7 +2,15 @@
 
 import pytest
 
-from prolog_ai import run_aiq, run_nlcd, run_rex, run_scds, run_ssm
+from prolog_ai import (
+    run_aiq,
+    run_nlcd,
+    run_rex,
+    run_scds,
+    run_scds_analysis,
+    run_scds_rules,
+    run_ssm,
+)
 from prolog_ai.core.llm import LLMFailedError, _build_fake_instance
 from prolog_ai.modules.ssm.chunking import split_into_chapters
 
@@ -349,3 +357,82 @@ def test_run_aiq_first_question_has_no_history_block(llm_calls, messages):
     llm_calls["responses"] = [{"content": "답"}]
     run_aiq("질문", "원고 본문", messages=messages)
     assert "이전 대화:" not in llm_calls["prompts"][0]
+
+
+# --- SCDS: 룰 검출(run_scds_rules)과 AI 분석(run_scds_analysis) 분리 ---
+
+SPLIT_EVENT = {"character_ids": ["char_001"], "content": "강도를 잔혹하게 살해함"}
+SPLIT_RULES = [{"rule_id": "RULE-02", "description": "폭력 회피", "violation_keywords": ["잔혹하게 살해"]}]
+
+
+def test_run_scds_rules_candidate_is_queued_without_calling_llm(llm_calls):
+    result = run_scds_rules(SPLIT_EVENT, SPLIT_RULES)
+    assert llm_calls["prompts"] == []
+    assert result["data"]["status"] == "queued"
+    assert result["data"]["rule_result"]["candidates"] == [
+        {
+            "rule_id": "RULE-02",
+            "character_id": "char_001",
+            "conflict_target": "폭력 회피",
+            "matched_keyword": "잔혹하게 살해",
+        }
+    ]
+    assert result["meta"] == {}
+
+
+@pytest.mark.parametrize(
+    "event, world_rules, status",
+    [
+        (SPLIT_EVENT, [], "skipped"),
+        ({"character_ids": ["char_001"], "content": "평화롭게 대화함"}, SPLIT_RULES, "no_candidate"),
+    ],
+)
+def test_run_scds_rules_without_candidate(llm_calls, event, world_rules, status):
+    result = run_scds_rules(event, world_rules)
+    assert llm_calls["prompts"] == []
+    assert result["data"]["status"] == status
+
+
+def test_run_scds_analysis_uses_given_rule_result(llm_calls):
+    rule_result = run_scds_rules(SPLIT_EVENT, SPLIT_RULES)["data"]["rule_result"]
+    conflict = {"character_id": "char_001", "conflict_target": "폭력 회피", "severity": "high", "advice": "조언"}
+    llm_calls["responses"] = [{"conflicts": [conflict]}]
+    characters = [{"character_id": "char_001", "name": "피터", "core_values": ["폭력 회피"]}]
+
+    result = run_scds_analysis(SPLIT_EVENT, rule_result, characters)
+
+    assert result["data"] == {"status": "completed", "rule_result": rule_result, "conflicts": [conflict]}
+    assert result["meta"] == {"removed_conflict_count": 0}
+    assert "잔혹하게 살해" in llm_calls["prompts"][0]
+    assert "폭력 회피" in llm_calls["prompts"][0]
+
+
+def test_run_scds_rules_then_analysis_matches_run_scds(llm_calls):
+    response = {"conflicts": [{"character_id": "char_001", "conflict_target": "폭력 회피", "severity": "high", "advice": "조언"}]}
+    llm_calls["responses"] = [response, response]
+    combined = run_scds(SPLIT_EVENT, SPLIT_RULES)
+    rule_result = run_scds_rules(SPLIT_EVENT, SPLIT_RULES)["data"]["rule_result"]
+    assert run_scds_analysis(SPLIT_EVENT, rule_result) == combined
+
+
+@pytest.mark.parametrize(
+    "rule_result, status",
+    [
+        ({"has_candidate": False, "skipped": True, "skipped_reason": "NO_REFERENCE_DATA", "candidates": []}, "skipped"),
+        ({"has_candidate": False, "skipped": False, "skipped_reason": None, "candidates": []}, "no_candidate"),
+    ],
+)
+def test_run_scds_analysis_without_candidate_does_not_call_llm(llm_calls, rule_result, status):
+    result = run_scds_analysis(SPLIT_EVENT, rule_result)
+    assert llm_calls["prompts"] == []
+    assert result["data"] == {"status": status, "rule_result": rule_result}
+
+
+def test_run_scds_analysis_keeps_rule_result_when_ai_fails(llm_calls):
+    from prolog_ai.core.llm import LLMFailedError
+
+    rule_result = run_scds_rules(SPLIT_EVENT, SPLIT_RULES)["data"]["rule_result"]
+    llm_calls["responses"] = [LLMFailedError("실패")]
+    result = run_scds_analysis(SPLIT_EVENT, rule_result)
+    assert result["error"]["code"] == "AI_ANALYSIS_FAILED"
+    assert result["error"]["details"]["rule_result"] == rule_result
