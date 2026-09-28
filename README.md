@@ -84,7 +84,7 @@ set -a; source .env; set +a
 | 키 | 함수 | 의미 |
 | --- | --- | --- |
 | `removed_evidence_count` | NLCD, REX | 근거가 원문에 없어 제거한 항목 수 |
-| `removed_conflict_count` | SCDS | 룰 후보에 없는 캐릭터·설정으로 만들어져 제거한 충돌 수 |
+| `removed_conflict_count` | SCDS | 없는 룰 후보 번호를 가리켜 제거한 충돌 수. AI는 후보 번호만 고르고, `character_id`·`conflict_target`은 패키지가 후보에서 채운다 |
 | `removed_edge_count` | SSM | 없는 노드를 가리켜 제거한 연결 수 |
 
 ### SCDS 응답

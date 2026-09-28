@@ -223,15 +223,31 @@ def test_run_scds_drops_conflicts_not_backed_by_candidates(llm_calls):
     llm_calls["responses"] = [
         {
             "conflicts": [
-                {"character_id": "char_001", "conflict_target": "폭력 회피", "severity": "high", "advice": "a"},
-                {"character_id": "char_999", "conflict_target": "폭력 회피", "severity": "low", "advice": "b"},
-                {"character_id": "char_001", "conflict_target": "지어낸 설정", "severity": "low", "advice": "c"},
+                {"candidate_index": 0, "severity": "high", "advice": "a"},
+                {"candidate_index": 1, "severity": "low", "advice": "b"},
+                {"candidate_index": -1, "severity": "low", "advice": "c"},
             ]
         }
     ]
     result = run_scds(VIOLENT_EVENT, WORLD_RULES)
     assert [c["advice"] for c in result["data"]["conflicts"]] == ["a"]
     assert result["meta"]["removed_conflict_count"] == 2
+
+
+def test_run_scds_fills_conflict_fields_from_candidate(llm_calls):
+    llm_calls["responses"] = [{"conflicts": [{"candidate_index": 0, "severity": "high", "advice": "a"}]}]
+    result = run_scds(VIOLENT_EVENT, WORLD_RULES)
+    candidate = result["data"]["rule_result"]["candidates"][0]
+    assert result["data"]["conflicts"] == [
+        {
+            "character_id": candidate["character_id"],
+            "conflict_target": candidate["conflict_target"],
+            "severity": "high",
+            "advice": "a",
+        }
+    ]
+    assert result["meta"]["removed_conflict_count"] == 0
+    assert f"[0] 캐릭터: {candidate['character_id']}" in llm_calls["prompts"][0]
 
 
 def test_run_scds_all_outcomes_share_status_and_rule_result():
@@ -395,8 +411,8 @@ def test_run_scds_rules_without_candidate(llm_calls, event, world_rules, status)
 
 def test_run_scds_analysis_uses_given_rule_result(llm_calls):
     rule_result = run_scds_rules(SPLIT_EVENT, SPLIT_RULES)["data"]["rule_result"]
+    llm_calls["responses"] = [{"conflicts": [{"candidate_index": 0, "severity": "high", "advice": "조언"}]}]
     conflict = {"character_id": "char_001", "conflict_target": "폭력 회피", "severity": "high", "advice": "조언"}
-    llm_calls["responses"] = [{"conflicts": [conflict]}]
     characters = [{"character_id": "char_001", "name": "피터", "core_values": ["폭력 회피"]}]
 
     result = run_scds_analysis(SPLIT_EVENT, rule_result, characters)
@@ -408,7 +424,7 @@ def test_run_scds_analysis_uses_given_rule_result(llm_calls):
 
 
 def test_run_scds_rules_then_analysis_matches_run_scds(llm_calls):
-    response = {"conflicts": [{"character_id": "char_001", "conflict_target": "폭력 회피", "severity": "high", "advice": "조언"}]}
+    response = {"conflicts": [{"candidate_index": 0, "severity": "high", "advice": "조언"}]}
     llm_calls["responses"] = [response, response]
     combined = run_scds(SPLIT_EVENT, SPLIT_RULES)
     rule_result = run_scds_rules(SPLIT_EVENT, SPLIT_RULES)["data"]["rule_result"]

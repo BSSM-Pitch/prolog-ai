@@ -20,7 +20,6 @@ core/mapping.py로 SCDS Character 필드(traits/values/influences)로 바꿔 쓴
 from typing import Any
 
 from prolog_ai.core.errors import ErrorCode
-from prolog_ai.core.evidence import normalize
 from prolog_ai.core.guard import expect_list_of, expect_text, expect_type, public_api
 from prolog_ai.core.mapping import map_confirmed_character_to_scds
 from prolog_ai.core.runner import InputValidationError, make_status_response, run_module
@@ -104,10 +103,18 @@ def _character_settings(event: dict[str, Any], characters: list[dict[str, Any]])
     return settings
 
 
-def _keep_candidate_conflicts(conflicts: list[dict], candidates: list[dict]) -> list[dict]:
-    """룰 후보에 있는 (캐릭터, 충돌 대상) 조합으로 만든 충돌만 남긴다."""
-    allowed = {(c["character_id"], normalize(c["conflict_target"])) for c in candidates}
-    return [c for c in conflicts if (c["character_id"], normalize(c["conflict_target"])) in allowed]
+def _conflicts_from_candidates(conflicts: list[dict], candidates: list[dict]) -> list[dict]:
+    """AI가 고른 후보 번호로 SCDS 2.7 Conflict 필드를 채운다. 없는 번호를 가리키는 충돌은 버린다."""
+    return [
+        {
+            "character_id": candidates[c["candidate_index"]]["character_id"],
+            "conflict_target": candidates[c["candidate_index"]]["conflict_target"],
+            "severity": c["severity"],
+            "advice": c["advice"],
+        }
+        for c in conflicts
+        if 0 <= c["candidate_index"] < len(candidates)
+    ]
 
 
 def _rule_status_response(rule_result: dict[str, Any]) -> dict[str, Any]:
@@ -142,7 +149,7 @@ def _analyze(
         return result
 
     conflicts = result["data"]["conflicts"]
-    kept = _keep_candidate_conflicts(conflicts, rule_result["candidates"])
+    kept = _conflicts_from_candidates(conflicts, rule_result["candidates"])
     return make_status_response(
         RunStatus.COMPLETED,
         {"rule_result": rule_result, "conflicts": kept},
