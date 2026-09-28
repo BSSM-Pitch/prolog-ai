@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "prolog-ai"
-version = "0.0.1"
+dynamic = ["version"]
 description = "Prolog 서비스의 AI 모듈 패키지"
 readme = "README.md"
 requires-python = ">=3.11"
@@ -19,6 +19,9 @@ dev = [
     "pytest",
     "ruff",
 ]
+
+[tool.hatch.version]
+path = "src/prolog_ai/__init__.py"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/prolog_ai"]

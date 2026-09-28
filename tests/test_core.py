@@ -1,4 +1,6 @@
+import enum
 import json
+from typing import Literal
 
 import pytest
 from pydantic import BaseModel
@@ -12,7 +14,7 @@ from prolog_ai.core.errors import (
 )
 from prolog_ai.core.evidence import filter_unverified, is_present, normalize
 from prolog_ai.core.llm import _build_fake_instance
-from prolog_ai.core.runner import make_skip_response
+from prolog_ai.core.runner import make_status_response
 from prolog_ai.core.status import (
     AIQMessageStatus,
     NLCDStatus,
@@ -131,6 +133,16 @@ def test_is_present_false_for_empty_evidence():
     assert not is_present("", "아무 원문")
 
 
+@pytest.mark.parametrize("evidence", ["   ", "\n\t", None])
+def test_is_present_false_for_blank_evidence(evidence):
+    assert not is_present(evidence, "아무 원문")
+
+
+@pytest.mark.parametrize("evidence", ["「계약」", "『계약』", '"계약"', "“계약”"])
+def test_korean_quote_brackets_are_normalized(evidence):
+    assert is_present(evidence, "그는 『계약』을 맺었다.")
+
+
 def test_filter_unverified_removes_only_unverified_items():
     data = {
         "personality_tags": [
@@ -179,11 +191,30 @@ def test_build_fake_instance_fills_only_required_fields_with_typed_defaults():
     _FakeSchema.model_validate(fake)  # 스키마 자체를 통과해야 한다
 
 
+class _Color(enum.Enum):
+    RED = "red"
+    BLUE = "blue"
+
+
+class _ChoiceSchema(BaseModel):
+    kind: Literal["event", "turning_point"]
+    color: _Color
+    maybe_kind: Literal["a", "b"] | None
+
+
+def test_build_fake_instance_supports_literal_and_enum():
+    fake = _build_fake_instance(_ChoiceSchema)
+    parsed = _ChoiceSchema.model_validate(fake)
+    assert parsed.kind == "event"
+    assert parsed.color is _Color.RED
+    assert parsed.maybe_kind == "a"
+
+
 # --- runner.py ---
 
 
-def test_make_skip_response_shape():
-    result = make_skip_response(
+def test_make_status_response_shape():
+    result = make_status_response(
         RunStatus.SKIPPED,
         {"check_id": "chk_1"},
         {"skipped_reason": SkippedReason.NO_REFERENCE_DATA.value},

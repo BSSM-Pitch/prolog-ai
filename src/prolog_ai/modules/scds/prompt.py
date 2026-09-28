@@ -4,4 +4,9 @@ PLACEHOLDER_PROMPT = "다음 충돌 후보가 캐릭터 설정과 실제로 충�
 
 
 def build_prompt(data: dict) -> str:
-    return f"{PLACEHOLDER_PROMPT}\n\n사건: {data['event']}\n룰 검출 후보: {data['rule_result']}"
+    return (
+        f"{PLACEHOLDER_PROMPT}\n\n"
+        f"사건: {data['event']}\n"
+        f"캐릭터 설정: {data['character_settings']}\n"
+        f"룰 검출 후보: {data['rule_result']}"
+    )
