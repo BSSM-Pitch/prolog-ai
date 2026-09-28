@@ -6,13 +6,13 @@
 
 - 공개 함수 다섯 개(`run_nlcd`, `run_rex`, `run_aiq`, `run_scds`, `run_ssm`)의 인터페이스와 응답 형식은 고정됐다.
 - 어떤 입력·AI 오류에도 예외를 던지지 않고 `{"data", "meta"}` 또는 `{"error": {"code", "message", "details"}}`로 반환한다. 다섯 함수 × 예외 케이스를 `tests/test_guardrails_modules.py`에서 확인한다.
-- 실제 Claude API 호출 경로는 가짜 클라이언트로만 검증했다(`tests/test_llm_real_path.py`). **실제 API로 돌려본 적은 없다.**
+- 실제 LLM 호출 경로(OpenRouter → DeepSeek)는 가짜 클라이언트로만 검증했다(`tests/test_llm_real_path.py`). **실제 API로 돌려본 적은 없다.**
 - 프롬프트는 한두 줄짜리 자리표시 수준이다. 결과 품질은 검증하지 않았다.
 
 ## 연동 체크리스트
 
 1. 설치: `pip install git+https://github.com/BSSM-Pitch/prolog-ai.git` (버전 태그는 아직 없음)
-2. 환경변수 `ANTHROPIC_API_KEY`, `PROLOG_AI_MODEL`을 서버 환경에 넣는다. 패키지는 `.env`를 읽지 않는다.
+2. 환경변수 `OPENROUTER_API_KEY`(필수), `PROLOG_AI_MODEL`(선택, 기본 `deepseek/deepseek-v4-flash`)을 서버 환경에 넣는다. 운영 환경에는 `USE_FAKE_LLM`을 넣지 않는다. 서버에서 `openrouter.ai`로 나가는 외부 연결이 필요하다. 패키지는 `.env`를 읽지 않는다.
 3. 개발·테스트 환경에서는 `USE_FAKE_LLM=1`로 API 없이 돌릴 수 있다.
 4. 함수는 동기이고 한 번에 수십 초 걸릴 수 있다(재시도 포함). 비동기 작업(워커)에서 호출하고, 결과로 작업 상태를 정한다(README "백엔드 작업 상태와 연결").
 5. SCDS는 `run_scds(event, world_rules, characters)`로 확정 캐릭터(ASS ConfirmedCharacter)도 넘겨야 캐릭터 설정이 AI 분석에 들어간다.
