@@ -196,3 +196,20 @@ def test_aiq_uses_longer_timeout_than_other_modules(fake_client):
     fake_client.behaviors = [tool_response({})]
     run_nlcd("피터는 책임감이 강하다.")
     assert fake_client.init_kwargs["timeout"] == llm.DEFAULT_TIMEOUT_SECONDS
+
+
+def test_scds_analysis_uses_longer_timeout(fake_client):
+    from prolog_ai import run_scds_analysis
+    from prolog_ai.modules.scds.module import SCDS_TIMEOUT_SECONDS
+
+    rule_result = {
+        "has_candidate": True,
+        "skipped": False,
+        "skipped_reason": None,
+        "candidates": [
+            {"rule_id": "r", "character_id": "c", "conflict_target": "폭력 회피", "matched_keyword": "살해"}
+        ],
+    }
+    fake_client.behaviors = [tool_response({"conflicts": []})]
+    run_scds_analysis({"character_ids": ["c"], "content": "살해"}, rule_result)
+    assert fake_client.init_kwargs["timeout"] == SCDS_TIMEOUT_SECONDS > llm.DEFAULT_TIMEOUT_SECONDS

@@ -29,6 +29,10 @@ from prolog_ai.modules.scds.prompt import build_prompt
 from prolog_ai.modules.scds.rules import detect_conflict_candidates
 from prolog_ai.modules.scds.schema import SCDSOutput
 
+# 조언 생성이 기본 제한(30초)을 넘는 경우가 있다(실측 약 32초). 명세상 AI 분석은 비동기(폴링)라
+# 시간 상한이 없으므로 AIQ와 같이 넉넉하게 둔다. 재시도 포함 최악 약 4분 40초.
+SCDS_TIMEOUT_SECONDS = 90.0
+
 
 def _validate_event(event: Any) -> None:
     expect_type(event, dict, "event")
@@ -130,6 +134,7 @@ def _analyze(
         validate=lambda data: data,
         build_prompt=build_prompt,
         output_schema=SCDSOutput,
+        timeout=SCDS_TIMEOUT_SECONDS,
     )
 
     if "error" in result:
