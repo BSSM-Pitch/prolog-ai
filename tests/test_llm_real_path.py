@@ -1,0 +1,151 @@
+"""core/llm.py의 실제 API 경로를 가짜 anthropic 클라이언트로 검증한다. 네트워크 호출 없음."""
+
+from types import SimpleNamespace
+
+import anthropic
+import pytest
+from pydantic import BaseModel
+
+from prolog_ai.core import llm
+from prolog_ai.core.llm import LLMFailedError, LLMTimeoutError, call_llm
+
+
+class Output(BaseModel):
+    value: str
+
+
+REQUEST = SimpleNamespace(method="POST", url="https://example.invalid")
+
+
+def status_error(cls, status_code):
+    response = SimpleNamespace(status_code=status_code, headers={}, request=REQUEST)
+    return cls(f"status {status_code}", response=response, body=None)
+
+
+def tool_response(payload, stop_reason="tool_use"):
+    block = SimpleNamespace(type="tool_use", input=payload)
+    return SimpleNamespace(content=[block], stop_reason=stop_reason)
+
+
+def text_response():
+    return SimpleNamespace(content=[SimpleNamespace(type="text", text="글로만 답함")], stop_reason="end_turn")
+
+
+@pytest.fixture
+def fake_client(monkeypatch):
+    """create()가 behaviors를 순서대로 돌려주거나(예외면 raise) 하는 가짜 클라이언트."""
+    monkeypatch.delenv("USE_FAKE_LLM", raising=False)
+    monkeypatch.setenv("PROLOG_AI_MODEL", "test-model")
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
+    sleeps = []
+    monkeypatch.setattr(llm, "sleep_before_retry", sleeps.append)
+    state = SimpleNamespace(behaviors=[], calls=[], init_kwargs=None, sleeps=sleeps)
+
+    class FakeMessages:
+        def create(self, **kwargs):
+            state.calls.append(kwargs)
+            behavior = state.behaviors[min(len(state.calls), len(state.behaviors)) - 1]
+            if isinstance(behavior, Exception):
+                raise behavior
+            return behavior
+
+    class FakeClient:
+        def __init__(self, **kwargs):
+            state.init_kwargs = kwargs
+            self.messages = FakeMessages()
+
+    monkeypatch.setattr(anthropic, "Anthropic", FakeClient)
+    return state
+
+
+def test_returns_tool_use_input(fake_client):
+    fake_client.behaviors = [tool_response({"value": "ok"})]
+    assert call_llm("p", schema=Output) == {"value": "ok"}
+    assert len(fake_client.calls) == 1
+
+
+def test_request_uses_env_model_schema_and_forced_tool(fake_client):
+    fake_client.behaviors = [tool_response({"value": "ok"})]
+    call_llm("프롬프트", schema=Output, timeout=12.0)
+    request = fake_client.calls[0]
+    assert request["model"] == "test-model"
+    assert request["messages"] == [{"role": "user", "content": "프롬프트"}]
+    assert request["tools"][0]["input_schema"] == Output.model_json_schema()
+    assert request["tool_choice"] == {"type": "tool", "name": "respond"}
+    assert fake_client.init_kwargs["api_key"] == "test-key"
+    assert fake_client.init_kwargs["timeout"] == 12.0
+
+
+def test_sdk_internal_retries_are_disabled(fake_client):
+    fake_client.behaviors = [tool_response({"value": "ok"})]
+    call_llm("p", schema=Output)
+    assert fake_client.init_kwargs["max_retries"] == 0
+
+
+def test_timeout_retries_then_raises_timeout(fake_client):
+    fake_client.behaviors = [anthropic.APITimeoutError(request=REQUEST)]
+    with pytest.raises(LLMTimeoutError):
+        call_llm("p", schema=Output, max_retries=2)
+    assert len(fake_client.calls) == 3
+    assert fake_client.sleeps == [0, 1]
+
+
+def test_recovers_when_a_retry_succeeds(fake_client):
+    fake_client.behaviors = [
+        anthropic.APIConnectionError(request=REQUEST),
+        tool_response({"value": "ok"}),
+    ]
+    assert call_llm("p", schema=Output) == {"value": "ok"}
+    assert len(fake_client.calls) == 2
+
+
+@pytest.mark.parametrize(
+    "cls, status_code",
+    [
+        (anthropic.AuthenticationError, 401),
+        (anthropic.PermissionDeniedError, 403),
+        (anthropic.BadRequestError, 400),
+        (anthropic.NotFoundError, 404),
+    ],
+)
+def test_non_retryable_status_fails_immediately(fake_client, cls, status_code):
+    fake_client.behaviors = [status_error(cls, status_code)]
+    with pytest.raises(LLMFailedError):
+        call_llm("p", schema=Output)
+    assert len(fake_client.calls) == 1
+
+
+@pytest.mark.parametrize(
+    "cls, status_code",
+    [(anthropic.RateLimitError, 429), (anthropic.InternalServerError, 500)],
+)
+def test_retryable_status_is_retried(fake_client, cls, status_code):
+    fake_client.behaviors = [status_error(cls, status_code)]
+    with pytest.raises(LLMFailedError):
+        call_llm("p", schema=Output, max_retries=2)
+    assert len(fake_client.calls) == 3
+
+
+def test_missing_tool_use_is_retried_then_fails(fake_client):
+    fake_client.behaviors = [text_response()]
+    with pytest.raises(LLMFailedError, match="tool_use"):
+        call_llm("p", schema=Output, max_retries=2)
+    assert len(fake_client.calls) == 3
+
+
+def test_truncated_output_fails_without_retry(fake_client):
+    fake_client.behaviors = [tool_response({"value": "잘린"}, stop_reason="max_tokens")]
+    with pytest.raises(LLMFailedError, match="잘렸"):
+        call_llm("p", schema=Output)
+    assert len(fake_client.calls) == 1
+
+
+def test_public_function_maps_real_path_failures_to_module_codes(fake_client):
+    from prolog_ai import run_nlcd
+
+    fake_client.behaviors = [anthropic.APITimeoutError(request=REQUEST)]
+    assert run_nlcd("피터는 책임감이 강하다.")["error"]["code"] == "AI_EXTRACTION_TIMEOUT"
+
+    fake_client.calls.clear()
+    fake_client.behaviors = [tool_response({}, stop_reason="max_tokens")]
+    assert run_nlcd("피터는 책임감이 강하다.")["error"]["code"] == "AI_EXTRACTION_FAILED"

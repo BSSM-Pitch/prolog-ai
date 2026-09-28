@@ -3,8 +3,8 @@
 책임 경계: run_module은 "입력 하나 -> LLM 호출 한 번 -> 검증된 출력 하나"만 처리한다.
 청킹(SSM)과 룰 검출(SCDS)은 모듈마다 기준이 달라 뼈대 밖(각 모듈의 chunking.py/rules.py와
 module.py)에서 수행하고, 그 결과(스킵 여부, 나뉜 입력)만 이 함수에 넘기거나 이 함수를
-아예 호출하지 않는다. SCDS가 룰 검출 결과만으로 skip/no_candidate 응답을 만들 때는
-run_module을 호출하지 않고 make_skip_response()를 직접 사용한다.
+아예 호출하지 않는다. SCDS는 응답에 status를 붙이기 위해 make_status_response()를 쓰며,
+skip/no_candidate일 때는 run_module을 호출하지 않는다.
 
 어떤 예외가 나도 이 함수는 죽지 않고 errors.py 형식으로 반환한다. 빈 결과(추출된 항목이
 없음)는 에러가 아니라 빈 배열을 담은 정상 응답이다.
@@ -40,10 +40,10 @@ class InputValidationError(Exception):
         self.code = code
 
 
-def make_skip_response(
+def make_status_response(
     status: RunStatus, data: dict[str, Any], meta: dict[str, Any] | None = None
 ) -> dict[str, Any]:
-    """LLM을 호출하지 않는 경로(SCDS의 skipped/no_candidate)의 응답 형식을 통일한다."""
+    """data에 status를 붙인 성공 응답. SCDS가 skipped/no_candidate/completed를 같은 모양으로 반환할 때 쓴다."""
     return make_success({**data, "status": status.value}, meta)
 
 

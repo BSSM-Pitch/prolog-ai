@@ -1,7 +1,8 @@
 """룰 기반 충돌 후보 검출.
 
 docs/specs/claude/api 명세/SCDS.md 2.6 RuleResult 형태로 검출 결과를 반환한다.
-world_rules가 없으면(참조할 기존 설정 없음) 검사를 생략(skipped=True)한다.
+세계관 규칙도, 사건 관련 캐릭터의 설정(traits/values/influences)도 없으면
+참조할 기존 설정이 없는 것으로 보고 검사를 생략(skipped=True)한다.
 
 TODO: RULE-01~04의 정확한 판정 기준은 원본 기능 명세서(SCDS 기능 명세서 v0.1)가 없어
 확인되지 않았다(0단계 TODO#6). 여기서는 SCDS API 명세에 명시적으로 나온 한 가지 기준,
@@ -16,10 +17,17 @@ from prolog_ai.core.status import SkippedReason
 
 
 def detect_conflict_candidates(
-    event: dict[str, Any], world_rules: list[dict[str, Any]]
+    event: dict[str, Any],
+    world_rules: list[dict[str, Any]],
+    character_settings: list[dict[str, Any]] = (),
 ) -> dict[str, Any]:
-    """event={"character_ids": [...], "content": "..."}, world_rules=WorldRule 딕셔너리 목록."""
-    if not world_rules:
+    """event={"character_ids": [...], "content": "..."}, world_rules=WorldRule 딕셔너리 목록,
+    character_settings=사건 관련 캐릭터의 SCDS Character 필드(traits/values/influences) 목록.
+    """
+    has_character_settings = any(
+        s.get("traits") or s.get("values") or s.get("influences") for s in character_settings
+    )
+    if not world_rules and not has_character_settings:
         return {
             "has_candidate": False,
             "skipped": True,

@@ -17,6 +17,136 @@ pip install -e ".[dev]"
 cp .env.example .env
 ```
 
+패키지는 `.env` 파일을 직접 읽지 않는다(환경변수만 본다). 로컬에서 `.env` 값을 쓰려면 셸에 불러온다.
+
+```bash
+set -a; source .env; set +a
+```
+
+테스트는 실제 API 없이 돈다: `pytest`, `ruff check .`
+
+## 환경변수
+
+| 이름 | 설명 |
+| --- | --- |
+| `ANTHROPIC_API_KEY` | Claude API 키 |
+| `PROLOG_AI_MODEL` | 호출할 모델 이름 |
+| `USE_FAKE_LLM` | 값이 정확히 `1`이면 API를 부르지 않고 스키마에 맞는 가짜 응답(빈 배열·빈 문자열)을 돌려준다. `true` 등 다른 값은 실제 호출로 처리된다 |
+
+## 공개 함수
+
+`from prolog_ai import run_nlcd, run_rex, run_aiq, run_scds, run_ssm`
+
+다섯 함수는 모두 **동기 함수**이고, 어떤 입력·오류에도 예외를 던지지 않고 아래 응답 형식 중 하나로 반환한다.
+작업 생성·폴링(비동기)과 저장은 백엔드가 맡는다.
+
+| 함수 | 입력 | 성공 시 `data` |
+| --- | --- | --- |
+| `run_nlcd(source_text)` | 캐릭터 서술 문장 | `personality_tags`, `core_values`, `emotion_keywords` (`[{value, evidence}]`), `influence_relations` (`[{value, type, evidence}]`) |
+| `run_rex(manuscript_text)` | 원고 본문 | `extracted_rules` (`[{description, violation_keywords, evidence, source_chapter}]`) |
+| `run_aiq(question, manuscript_text, scope="whole", selection_range=None)` | 질문, 원고, `whole`/`selection`, `{start, end}` 문자 오프셋 | `content` (답변 문자열) |
+| `run_scds(event, world_rules, characters=None)` | 사건 `{character_ids, content}`, WorldRule 목록 `[{rule_id, description, violation_keywords}]`, ASS 확정 캐릭터 목록(선택) | `status`, `rule_result`, 완료 시 `conflicts` (`[{character_id, conflict_target, severity, advice}]`) |
+| `run_ssm(manuscript_text)` | 원고 본문 | `acts`, `nodes`, `edges` (SSM 명세 StructureMap 구조) |
+
+필드 정의는 각 모듈의 `schema.py`와 `docs/specs/claude/api 명세/`를 따른다.
+
+### 응답 형식
+
+성공 (`run_nlcd` 예시, 원문에 없는 근거를 가진 항목 1개가 제거됨):
+
+```json
+{
+  "data": {
+    "personality_tags": [
+      {"value": "책임감 강함", "evidence": "책임감이 강하지만"},
+      {"value": "자신감 부족", "evidence": "자신감이 부족한"}
+    ],
+    "core_values": [{"value": "폭력 회피", "evidence": "폭력을 싫어한다"}],
+    "influence_relations": [{"value": "벤 삼촌", "type": "영향", "evidence": "벤 삼촌의 영향을 크게 받았으며"}],
+    "emotion_keywords": []
+  },
+  "meta": {"removed_evidence_count": 1}
+}
+```
+
+실패:
+
+```json
+{"error": {"code": "INVALID_INPUT", "message": "source_text가 비어 있습니다.", "details": {"field": "source_text"}}}
+```
+
+해당 내용이 없는 카테고리는 에러가 아니라 빈 배열이다.
+
+`meta`에 들어가는 값:
+
+| 키 | 함수 | 의미 |
+| --- | --- | --- |
+| `removed_evidence_count` | NLCD, REX | 근거가 원문에 없어 제거한 항목 수 |
+| `removed_conflict_count` | SCDS | 룰 후보에 없는 캐릭터·설정으로 만들어져 제거한 충돌 수 |
+| `removed_edge_count` | SSM | 없는 노드를 가리켜 제거한 연결 수 |
+
+### SCDS 응답
+
+SCDS는 명세의 ConflictCheck처럼 `status`와 `rule_result`를 항상 담는다. 룰 후보가 없거나 참조할 설정이 없으면 LLM을 부르지 않는다.
+
+| `data.status` | 조건 | LLM 호출 |
+| --- | --- | --- |
+| `skipped` | 세계관 규칙도, 사건 관련 캐릭터 설정도 없음 (`rule_result.skipped_reason: "NO_REFERENCE_DATA"`) | 안 함 |
+| `no_candidate` | 룰 검출 후보 없음 | 안 함 |
+| `completed` | 후보가 있어 AI 분석 완료. `conflicts` 포함 | 함 |
+
+완료 예시:
+
+```json
+{
+  "data": {
+    "status": "completed",
+    "rule_result": {
+      "has_candidate": true, "skipped": false, "skipped_reason": null,
+      "candidates": [{"rule_id": "wr_001", "character_id": "char_001", "conflict_target": "폭력 회피", "matched_keyword": "잔혹하게 살해"}]
+    },
+    "conflicts": [{"character_id": "char_001", "conflict_target": "폭력 회피", "severity": "high", "advice": "현재 캐릭터 설정과 비교했을 때 과도하게 공격적인 행동처럼 보입니다."}]
+  },
+  "meta": {"removed_conflict_count": 0}
+}
+```
+
+AI 분석이 실패해도 룰 후보는 `error.details.rule_result`에 남는다(SCDS 4.7 "failed면 후보만 표시"):
+
+```json
+{"error": {"code": "AI_ANALYSIS_FAILED", "message": "...", "details": {"rule_result": {"has_candidate": true, "candidates": ["..."]}}}}
+```
+
+`characters`에는 ASS `ConfirmedCharacter`를 그대로 넘기면 된다. 사건의 `character_ids`에 있는 캐릭터만 아래 필드 매핑으로 바꿔 AI에 전달한다.
+
+### 에러 코드
+
+| 코드 | HTTP | 발생 |
+| --- | --- | --- |
+| `INVALID_INPUT` | 400 | 입력이 비었거나 타입이 틀림, 인자 누락 (전 모듈) |
+| `INVALID_SELECTION_RANGE` | 400 | AIQ `scope=selection`인데 범위가 없거나 `0 ≤ start < end ≤ 원고 길이`를 벗어남 |
+| `MANUSCRIPT_TOO_SHORT` | 422 | SSM 원고가 비어 있음 |
+| `RULE_ENGINE_ERROR` | 500 | SCDS 룰 검출 등 AI 호출 밖에서 예상 못 한 오류 |
+| `AI_EXTRACTION_FAILED` / `AI_EXTRACTION_TIMEOUT` | 502 / 503 | NLCD, REX의 AI 실패 / 시간 초과 |
+| `AI_RESPONSE_FAILED` / `AI_RESPONSE_TIMEOUT` | 502 / 503 | AIQ의 AI 실패 / 시간 초과 |
+| `AI_ANALYSIS_FAILED` / `AI_ANALYSIS_TIMEOUT` | 502 / 503 | SCDS, SSM의 AI 실패 / 시간 초과 |
+| `SCHEMA_VALIDATION_FAILED` | 미정 | AI 응답이 스키마와 맞지 않음. 모듈 내부용 코드로 명세에 없으며 HTTP 상태와 노출 방식은 미결정(`WARN.md` A4) |
+
+HTTP 상태는 `prolog_ai.core.errors.HTTP_STATUS`에도 있다. `SCHEMA_VALIDATION_FAILED`는 이 표에 없으므로 `HTTP_STATUS.get(code, 502)`처럼 기본값을 두고 쓴다.
+
+### 백엔드 작업(job) 상태와 연결
+
+명세의 비동기 작업 상태(queued/analyzing 등)는 백엔드가 관리하고, 함수 호출이 끝나면 결과로 최종 상태를 정한다.
+
+| 함수 결과 | 작업 상태 |
+| --- | --- |
+| `data`가 있음 | `completed` (SCDS는 `data.status` 값을 그대로 사용: `skipped` / `no_candidate` / `completed`) |
+| `error`가 있음 | `failed`, `error`를 그대로 응답에 싣는다 |
+
+AI 재시도는 패키지 안에서 최대 2회 한다(시간 초과·연결 오류·429·5xx만. 인증 오류 등은 바로 실패). 사용자가 누르는 재시도 API는 같은 함수를 다시 호출하면 된다.
+
+인수인계 요약과 알려진 한계는 `docs/handoff.md`, 미해결 문제는 `docs/specs/claude/WARN.md`에 있다.
+
 ## NLCD/ASS ↔ SCDS 필드 매핑
 
 ASS `ConfirmedCharacter`(`docs/specs/claude/api 명세/ASS.md` 2.4)와 SCDS `Character`(`docs/specs/claude/api 명세/SCDS.md` 2.1)는

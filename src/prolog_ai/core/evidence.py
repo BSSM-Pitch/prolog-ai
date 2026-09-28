@@ -15,6 +15,10 @@ _QUOTE_MAP = str.maketrans(
         "”": '"',
         "«": '"',
         "»": '"',
+        "「": '"',  # 「
+        "」": '"',  # 」
+        "『": '"',  # 『
+        "』": '"',  # 』
     }
 )
 
@@ -27,9 +31,11 @@ def normalize(text: str) -> str:
 
 def is_present(evidence: str, source_text: str) -> bool:
     """evidence가 source_text 안에 (정규화 후) 실제로 존재하는지 확인한다."""
-    if not evidence:
+    normalized = normalize(evidence or "")
+    # 공백만 있는 근거는 정규화하면 빈 문자열이 되어 어떤 원문에도 "포함"되므로 거부한다.
+    if not normalized:
         return False
-    return normalize(evidence) in normalize(source_text)
+    return normalized in normalize(source_text)
 
 
 def filter_unverified(
