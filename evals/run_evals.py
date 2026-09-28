@@ -79,14 +79,14 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--module", choices=sorted(FUNCTIONS), help="이 모듈 케이스만 실행")
     parser.add_argument(
-        "--real", action="store_true", help="실제 Claude API로 호출해 expected_values까지 채점"
+        "--real", action="store_true", help="실제 LLM API(OpenRouter)로 호출해 expected_values까지 채점"
     )
     args = parser.parse_args(argv)
 
     if args.real:
         os.environ.pop("USE_FAKE_LLM", None)
-        if not os.environ.get("ANTHROPIC_API_KEY"):
-            print("ANTHROPIC_API_KEY가 없어 --real을 쓸 수 없습니다.", file=sys.stderr)
+        if not os.environ.get("OPENROUTER_API_KEY"):
+            print("OPENROUTER_API_KEY가 없어 --real을 쓸 수 없습니다.", file=sys.stderr)
             return 1
     else:
         os.environ["USE_FAKE_LLM"] = "1"

@@ -53,5 +53,5 @@ def test_main_returns_zero_for_default_fake_run(monkeypatch, capsys):
 def test_main_rejects_real_without_api_key(monkeypatch):
     from evals.run_evals import main
 
-    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
     assert main(["--real"]) == 1

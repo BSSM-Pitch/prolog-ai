@@ -29,8 +29,8 @@ set -a; source .env; set +a
 
 | 이름 | 설명 |
 | --- | --- |
-| `ANTHROPIC_API_KEY` | Claude API 키 |
-| `PROLOG_AI_MODEL` | 호출할 모델 이름 |
+| `OPENROUTER_API_KEY` | OpenRouter API 키 (`sk-or-v1-…`). LLM은 OpenRouter를 거쳐 DeepSeek 모델을 부른다 |
+| `PROLOG_AI_MODEL` | 호출할 OpenRouter 모델 이름. 비우면 `deepseek/deepseek-v4-flash` |
 | `USE_FAKE_LLM` | 값이 정확히 `1`이면 API를 부르지 않고 스키마에 맞는 가짜 응답(빈 배열·빈 문자열)을 돌려준다. `true` 등 다른 값은 실제 호출로 처리된다 |
 
 ## 공개 함수

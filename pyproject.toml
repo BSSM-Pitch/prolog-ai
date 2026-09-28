@@ -9,7 +9,7 @@ description = "Prolog 서비스의 AI 모듈 패키지"
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
-    "anthropic",
+    "openai",
     "pydantic>=2",
     "python-dotenv",
 ]

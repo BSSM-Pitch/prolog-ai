@@ -1,14 +1,16 @@
-"""Claude API 호출.
+"""LLM API 호출 (OpenRouter를 거쳐 DeepSeek 모델 사용).
 
-호출은 call_llm() 한 함수로 모은다. 모델 이름과 API 키는 환경변수
-(PROLOG_AI_MODEL, ANTHROPIC_API_KEY)로 받는다.
+호출은 call_llm() 한 함수로 모은다. OpenRouter는 OpenAI 호환 API라 openai SDK로
+부른다. 모델 이름과 API 키는 환경변수(PROLOG_AI_MODEL, OPENROUTER_API_KEY)로 받고,
+모델을 지정하지 않으면 DEFAULT_MODEL을 쓴다.
 
 USE_FAKE_LLM=1이면 실제 API를 호출하지 않고, 넘겨받은 pydantic 스키마를
 만족하는 가짜 응답을 만들어 돌려준다. 실제 API를 호출하는 경로는
-tests/test_llm_real_path.py에서 가짜 anthropic 클라이언트로 검증한다(네트워크 호출 없음).
+tests/test_llm_real_path.py에서 가짜 openai 클라이언트로 검증한다(네트워크 호출 없음).
 """
 
 import enum
+import json
 import os
 import time
 import types
@@ -17,6 +19,8 @@ from typing import Any
 
 from pydantic import BaseModel
 
+OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
+DEFAULT_MODEL = "deepseek/deepseek-v4-flash"
 DEFAULT_TIMEOUT_SECONDS = 30.0
 DEFAULT_MAX_RETRIES = 2  # 최초 시도 포함 최대 3회 시도
 MAX_OUTPUT_TOKENS = 4096
@@ -62,51 +66,77 @@ def _call_real_llm(
     timeout: float,
     max_retries: int,
 ) -> dict[str, Any]:
-    import anthropic
+    import openai
 
-    model = os.environ.get("PROLOG_AI_MODEL")
-    api_key = os.environ.get("ANTHROPIC_API_KEY")
+    model = os.environ.get("PROLOG_AI_MODEL") or DEFAULT_MODEL
+    api_key = os.environ.get("OPENROUTER_API_KEY")
     # SDK도 자체 재시도(기본 2회)를 하므로 끄지 않으면 이 함수의 재시도와 겹쳐 요청이 최대 9번 나간다.
-    client = anthropic.Anthropic(api_key=api_key, timeout=timeout, max_retries=0)
+    client = openai.OpenAI(
+        api_key=api_key, base_url=OPENROUTER_BASE_URL, timeout=timeout, max_retries=0
+    )
 
     last_error: Exception | None = None
     for attempt in range(max_retries + 1):
         if attempt > 0:
             sleep_before_retry(attempt - 1)
         try:
-            response = client.messages.create(
+            response = client.chat.completions.create(
                 model=model,
                 max_tokens=MAX_OUTPUT_TOKENS,
                 messages=[{"role": "user", "content": prompt}],
                 tools=[
                     {
-                        "name": "respond",
-                        "description": "정해진 스키마로 응답한다.",
-                        "input_schema": schema.model_json_schema(),
+                        "type": "function",
+                        "function": {
+                            "name": "respond",
+                            "description": "정해진 스키마로 응답한다.",
+                            "parameters": schema.model_json_schema(),
+                        },
                     }
                 ],
-                tool_choice={"type": "tool", "name": "respond"},
+                tool_choice={"type": "function", "function": {"name": "respond"}},
             )
-        except anthropic.APIStatusError as exc:
+        except openai.APIStatusError as exc:
             if not _is_retryable_status(exc.status_code):
                 raise LLMFailedError(f"LLM 요청이 거부되었습니다({exc.status_code}): {exc}") from exc
             last_error = exc
             continue
-        except anthropic.AnthropicError as exc:
+        except openai.OpenAIError as exc:
             last_error = exc
             continue
 
-        if response.stop_reason == "max_tokens":
+        if not response.choices:
+            last_error = LLMFailedError("LLM 응답에 choices가 없습니다.")
+            continue
+        choice = response.choices[0]
+        if choice.finish_reason == "length":
             # 같은 요청을 다시 보내도 또 잘리므로 재시도하지 않는다.
             raise LLMFailedError(f"LLM 출력이 최대 길이({MAX_OUTPUT_TOKENS} 토큰)에서 잘렸습니다.")
-        for block in response.content:
-            if getattr(block, "type", None) == "tool_use":
-                return block.input
-        last_error = LLMFailedError("LLM 응답에 tool_use 블록이 없습니다.")
+        arguments = _find_tool_arguments(choice.message)
+        if arguments is None:
+            last_error = LLMFailedError("LLM 응답에 respond 도구 호출이 없습니다.")
+            continue
+        try:
+            parsed = json.loads(arguments)
+        except json.JSONDecodeError as exc:
+            last_error = LLMFailedError(f"LLM 도구 호출 인자가 JSON이 아닙니다: {exc}")
+            continue
+        if not isinstance(parsed, dict):
+            last_error = LLMFailedError("LLM 도구 호출 인자가 JSON 객체가 아닙니다.")
+            continue
+        return parsed
 
-    if isinstance(last_error, anthropic.APITimeoutError):
+    if isinstance(last_error, openai.APITimeoutError):
         raise LLMTimeoutError(str(last_error)) from last_error
     raise LLMFailedError(str(last_error)) from last_error
+
+
+def _find_tool_arguments(message: Any) -> str | None:
+    for tool_call in getattr(message, "tool_calls", None) or []:
+        function = getattr(tool_call, "function", None)
+        if getattr(function, "name", None) == "respond":
+            return function.arguments
+    return None
 
 
 def _is_retryable_status(status_code: int) -> bool:
