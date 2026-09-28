@@ -1,0 +1,27 @@
+{
+  "name": "peter_parker_no_candidate",
+  "source": "event·characters는 SCDS.md 6항/4.1, ASS.md 4.9 확정 예시 그대로. world_rules는 명세에 있는 유일한 WorldRule 예시(SCDS.md 4.4, 마법/계약)로, 사건(폭력)과 무관하다",
+  "note": "지금 룰 검출은 WorldRule.violation_keywords 매칭(RULE-02)만 구현되어 있고, 캐릭터 가치관 기반 판정(RULE-01, WARN.md A2)은 없다. 그래서 명세 예시의 사건은 이 world_rules로는 검출되지 않는 게 현재 구현에서 맞는 동작이다. 이 케이스는 품질이 아니라 그 동작을 지키는 회귀 검증이다.",
+  "input": {
+    "event": {"character_ids": ["char_001"], "content": "강도를 잔혹하게 살해함"},
+    "world_rules": [
+      {
+        "rule_id": "wr_001",
+        "description": "마법은 계약 없이 발현될 수 없다",
+        "violation_keywords": ["즉흥 마법", "무계약 시전"]
+      }
+    ],
+    "characters": [
+      {
+        "character_id": "char_001",
+        "name": "피터 파커",
+        "personality_tags": ["책임감 강함", "자신감 부족"],
+        "core_values": ["폭력 회피", "책임 중시"],
+        "influence_relations": [{"target": "벤 삼촌", "type": "영향", "status": "고인"}],
+        "emotion_keywords": ["불안"],
+        "status": "confirmed"
+      }
+    ]
+  },
+  "expected_status": "no_candidate"
+}
