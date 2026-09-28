@@ -1,3 +1,6 @@
+알아둘 점: SCDS·SSM 성공 응답 모양이 바뀌었어요. SCDS에는 status와 rule_result가 추가됐고, SSM에는 meta.removed_edge_count가 추가됐어요. 백엔드에서 이미 이 응답을 쓰고 있다면 맞춰야 해요.
+fix/test-findings는 아직 push하지 않은 docs/decisions 위에서 만든 브랜치라, PR을 올리면 WARN.md 커밋 2개도 함께 들어가요.
+
 이 레포지토리는 서비스 전체 구현이 아닌 ai기능만 구현하는 역할이다.
 
 기획.md, db.md, api 명세 폴더의 내용은 사용자가 특별히 명령한 내용이 아닐 시 토큰을 절약하기 위해 보지 않는다.
