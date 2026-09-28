@@ -4,7 +4,15 @@ import json
 
 import pytest
 
-from prolog_ai import run_aiq, run_nlcd, run_rex, run_scds, run_ssm
+from prolog_ai import (
+    run_aiq,
+    run_nlcd,
+    run_rex,
+    run_scds,
+    run_scds_analysis,
+    run_scds_rules,
+    run_ssm,
+)
 from prolog_ai.core.errors import MODULE_AI_ERRORS, ErrorCode
 from prolog_ai.core.llm import LLMFailedError, LLMTimeoutError, _build_fake_instance
 
@@ -22,7 +30,7 @@ CALLERS = {
     "scds": lambda text: run_scds({"character_ids": ["char_001"], "content": text}, WORLD_RULES),
     "ssm": lambda text: run_ssm(text),
 }
-PUBLIC_FUNCTIONS = [run_nlcd, run_rex, run_aiq, run_scds, run_ssm]
+PUBLIC_FUNCTIONS = [run_nlcd, run_rex, run_aiq, run_scds, run_scds_rules, run_scds_analysis, run_ssm]
 MODULES = list(CALLERS)
 ERROR_CODES = {code.value for code in ErrorCode}
 
@@ -311,3 +319,49 @@ def test_aiq_bad_messages_are_invalid_input(messages):
     result = run_aiq("후속 질문", NORMAL_TEXT, messages=messages)
     assert_envelope(result)
     assert result["error"]["code"] == "INVALID_INPUT"
+
+
+VALID_RULE_RESULT = {
+    "has_candidate": True,
+    "skipped": False,
+    "skipped_reason": None,
+    "candidates": [
+        {"rule_id": "RULE-02", "character_id": "char_001", "conflict_target": "폭력 회피", "matched_keyword": "살해"}
+    ],
+}
+
+
+@pytest.mark.parametrize(
+    "rule_result",
+    [
+        None,
+        "rule_result",
+        {},
+        {**VALID_RULE_RESULT, "has_candidate": "true"},
+        {**VALID_RULE_RESULT, "skipped": None},
+        {**VALID_RULE_RESULT, "skipped_reason": 1},
+        {**VALID_RULE_RESULT, "candidates": None},
+        {**VALID_RULE_RESULT, "candidates": ["후보"]},
+        {**VALID_RULE_RESULT, "candidates": [{"rule_id": "RULE-02"}]},
+        {**VALID_RULE_RESULT, "candidates": [{**VALID_RULE_RESULT["candidates"][0], "conflict_target": " "}]},
+        {**VALID_RULE_RESULT, "candidates": []},
+        {**VALID_RULE_RESULT, "has_candidate": False},
+    ],
+    ids=repr,
+)
+def test_scds_analysis_malformed_rule_result_is_invalid_input(rule_result, monkeypatch):
+    patch_llm(monkeypatch, lambda prompt, *, schema, **_: pytest.fail("LLM이 호출되면 안 된다"))
+    event = {"character_ids": ["char_001"], "content": "강도를 살해함"}
+    result = run_scds_analysis(event, rule_result)
+    assert_envelope(result)
+    assert result["error"]["code"] == "INVALID_INPUT"
+
+
+def test_scds_rules_crash_returns_rule_engine_error(monkeypatch):
+    def boom(*args, **kwargs):
+        raise RuntimeError("rule engine down")
+
+    monkeypatch.setattr("prolog_ai.modules.scds.module.detect_conflict_candidates", boom)
+    result = run_scds_rules({"character_ids": ["c"], "content": "내용"}, [])
+    assert_envelope(result)
+    assert result["error"]["code"] == "RULE_ENGINE_ERROR"

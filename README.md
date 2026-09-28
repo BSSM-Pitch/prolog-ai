@@ -35,9 +35,9 @@ set -a; source .env; set +a
 
 ## 공개 함수
 
-`from prolog_ai import run_nlcd, run_rex, run_aiq, run_scds, run_ssm`
+`from prolog_ai import run_nlcd, run_rex, run_aiq, run_scds, run_scds_rules, run_scds_analysis, run_ssm`
 
-다섯 함수는 모두 **동기 함수**이고, 어떤 입력·오류에도 예외를 던지지 않고 아래 응답 형식 중 하나로 반환한다.
+모든 함수는 **동기 함수**이고, 어떤 입력·오류에도 예외를 던지지 않고 아래 응답 형식 중 하나로 반환한다.
 작업 생성·폴링(비동기)과 저장은 백엔드가 맡는다.
 
 | 함수 | 입력 | 성공 시 `data` |
@@ -45,7 +45,9 @@ set -a; source .env; set +a
 | `run_nlcd(source_text)` | 캐릭터 서술 문장 | `personality_tags`, `core_values`, `emotion_keywords` (`[{value, evidence}]`), `influence_relations` (`[{value, type, evidence}]`) |
 | `run_rex(manuscript_text)` | 원고 본문 | `extracted_rules` (`[{description, violation_keywords, evidence, source_chapter}]`) |
 | `run_aiq(question, manuscript_text, scope="whole", selection_range=None, messages=None)` | 질문, 원고, `whole`/`selection`, `{start, end}` 문자 오프셋, 같은 스레드의 이전 메시지(후속 질문일 때, 시간순 `[{role, content}]`. `role`은 `user`/`assistant`. 그 밖의 필드는 무시. 답변이 없는 `pending`·`failed` 메시지는 빼고 넘긴다) | `content` (답변 문자열) |
-| `run_scds(event, world_rules, characters=None)` | 사건 `{character_ids, content}`, WorldRule 목록 `[{rule_id, description, violation_keywords}]`, ASS 확정 캐릭터 목록(선택) | `status`, `rule_result`, 완료 시 `conflicts` (`[{character_id, conflict_target, severity, advice}]`) |
+| `run_scds_rules(event, world_rules, characters=None)` | 사건 `{character_ids, content}`, WorldRule 목록 `[{rule_id, description, violation_keywords}]`, ASS 확정 캐릭터 목록(선택) | 룰 검출만(LLM 호출 없음). `status`(`skipped`/`no_candidate`/`queued`), `rule_result` |
+| `run_scds_analysis(event, rule_result, characters=None)` | 사건, `run_scds_rules`가 준 `rule_result`(SCDS 2.6), ASS 확정 캐릭터 목록(선택) | AI 분석만. `status`(`completed`), `rule_result`, `conflicts` (`[{character_id, conflict_target, severity, advice}]`) |
+| `run_scds(event, world_rules, characters=None)` | `run_scds_rules`와 같음 | 룰 검출 + AI 분석을 한 번에. `status`, `rule_result`, 완료 시 `conflicts` |
 | `run_ssm(manuscript_text)` | 원고 본문 | `acts`, `nodes`, `edges` (SSM 명세 StructureMap 구조) |
 
 필드 정의는 각 모듈의 `schema.py`와 `docs/specs/claude/api 명세/`를 따른다.
@@ -89,11 +91,20 @@ set -a; source .env; set +a
 
 SCDS는 명세의 ConflictCheck처럼 `status`와 `rule_result`를 항상 담는다. 룰 후보가 없거나 참조할 설정이 없으면 LLM을 부르지 않는다.
 
+명세 흐름(SCDS 4.6·4.7·5항)대로 쓰려면 함수를 나눠 부른다.
+
+1. 사건 저장 API(4.6)에서 `run_scds_rules`를 동기로 부르고, `status`·`rule_result`를 그대로 저장·응답한다.
+2. `status`가 `queued`면 AI 워커에서 `run_scds_analysis(event, rule_result, characters)`를 부른다.
+3. 재시도(4.8)는 저장해 둔 `rule_result`로 `run_scds_analysis`를 다시 부른다.
+
+`run_scds`는 1과 2를 한 번에 하는 함수이고 결과는 두 함수를 차례로 부른 것과 같다.
+
 | `data.status` | 조건 | LLM 호출 |
 | --- | --- | --- |
 | `skipped` | 세계관 규칙도, 사건 관련 캐릭터 설정도 없음 (`rule_result.skipped_reason: "NO_REFERENCE_DATA"`) | 안 함 |
 | `no_candidate` | 룰 검출 후보 없음 | 안 함 |
-| `completed` | 후보가 있어 AI 분석 완료. `conflicts` 포함 | 함 |
+| `queued` | 후보가 있어 AI 분석이 필요함 (`run_scds_rules`만) | 안 함 |
+| `completed` | 후보가 있어 AI 분석 완료. `conflicts` 포함 (`run_scds_analysis`, `run_scds`) | 함 |
 
 완료 예시:
 
@@ -126,7 +137,7 @@ AI 분석이 실패해도 룰 후보는 `error.details.rule_result`에 남는다
 | `INVALID_INPUT` | 400 | 입력이 비었거나 타입이 틀림, 인자 누락 (전 모듈) |
 | `INVALID_SELECTION_RANGE` | 400 | AIQ `scope=selection`인데 범위가 없거나 `0 ≤ start < end ≤ 원고 길이`를 벗어남 |
 | `MANUSCRIPT_TOO_SHORT` | 422 | SSM 원고가 비어 있음 |
-| `RULE_ENGINE_ERROR` | 500 | SCDS 룰 검출 등 AI 호출 밖에서 예상 못 한 오류 |
+| `RULE_ENGINE_ERROR` | 500 | SCDS 룰 검출 등 AI 호출 밖에서 예상 못 한 오류 (`run_scds_rules`, `run_scds`) |
 | `AI_EXTRACTION_FAILED` / `AI_EXTRACTION_TIMEOUT` | 502 / 503 | NLCD, REX의 AI 실패 / 시간 초과 |
 | `AI_RESPONSE_FAILED` / `AI_RESPONSE_TIMEOUT` | 502 / 503 | AIQ의 AI 실패 / 시간 초과 |
 | `AI_ANALYSIS_FAILED` / `AI_ANALYSIS_TIMEOUT` | 502 / 503 | SCDS, SSM의 AI 실패 / 시간 초과 |
@@ -140,7 +151,7 @@ HTTP 상태는 `prolog_ai.core.errors.HTTP_STATUS`에도 있다. `SCHEMA_VALIDAT
 
 | 함수 결과 | 작업 상태 |
 | --- | --- |
-| `data`가 있음 | `completed` (SCDS는 `data.status` 값을 그대로 사용: `skipped` / `no_candidate` / `completed`) |
+| `data`가 있음 | `completed` (SCDS는 `data.status` 값을 그대로 사용: `skipped` / `no_candidate` / `queued` / `completed`) |
 | `error`가 있음 | `failed`, `error`를 그대로 응답에 싣는다 |
 
 AI 호출 한 번의 시간 제한은 30초이고, AIQ만 답변이 길어 90초다. AI 재시도는 패키지 안에서 최대 2회 한다(시간 초과·연결 오류·429·5xx만. 인증 오류 등은 바로 실패). 사용자가 누르는 재시도 API는 같은 함수를 다시 호출하면 된다.
