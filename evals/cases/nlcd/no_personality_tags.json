@@ -1,0 +1,10 @@
+{
+  "name": "no_personality_tags",
+  "source": "NLCD.md 4.2 \"특정 카테고리 결과 없음\" 예시. source_text는 명세에 없어, 응답의 evidence 문구(\"그는 다 솔직하계\", 명세 원문 그대로)를 그대로 원고로 사용",
+  "input": {
+    "source_text": "그는 다 솔직하계."
+  },
+  "expected_values": {
+    "core_values": ["정직"]
+  }
+}

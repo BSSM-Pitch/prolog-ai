@@ -1,0 +1,13 @@
+{
+  "name": "peter_parker_full",
+  "source": "NLCD.md 4.2 완료 응답 예시 / 6항 부록",
+  "input": {
+    "source_text": "피터 파커는 책임감이 강하지만 자신감이 부족한 고등학생이다. 벤 삼촌의 영향을 크게 받았으매 폭력을 싫어한다."
+  },
+  "expected_values": {
+    "personality_tags": ["책임감 강함", "자신감 부족"],
+    "core_values": ["폭력 회피"],
+    "influence_relations": ["벤 삼촌"],
+    "emotion_keywords": ["불안"]
+  }
+}

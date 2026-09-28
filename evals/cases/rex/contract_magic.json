@@ -1,0 +1,10 @@
+{
+  "name": "contract_magic",
+  "source": "REX.md 4.2 완료 응답 예시. manuscript_text는 명세에 없어, evidence 문구(명세 원문에서 말줄임표로 잘려 있음)를 그대로 원고로 사용",
+  "input": {
+    "manuscript_text": "모든 주문은 정령과의 계약을 통해서만..."
+  },
+  "expected_values": {
+    "extracted_rules": ["마법은 계약 없이 발현될 수 없다"]
+  }
+}

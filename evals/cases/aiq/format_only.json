@@ -1,0 +1,9 @@
+{
+  "name": "format_only",
+  "source": "질문은 AIQ.md 4.2 whole scope 예시 그대로. manuscript_text는 명세에 원고 본문 예시가 없어 NLCD.md 6항 문장을 재사용한 형식 확인용이며, 결과 값은 채점하지 않는다",
+  "input": {
+    "question": "주인공의 동기가 후반부에서 일관되게 유지되나요?",
+    "manuscript_text": "피터 파커는 책임감이 강하지만 자신감이 부족한 고등학생이다. 벤 삼촌의 영향을 크게 받았으매 폭력을 싫어한다.",
+    "scope": "whole"
+  }
+}
