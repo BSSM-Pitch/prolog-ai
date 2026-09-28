@@ -5,8 +5,8 @@
 
 **방침 (2026-09-29)**: 명세(API 명세, 기획.md, db.md)에 근거가 없는 작업은 하지 않는다. 그런 항목은 "하지 않음(명세 근거 없음)"으로 표시했다. 남은 작업의 담당·순서는 `CLAUDE.md` "후속 작업 계획"에 정리되어 있다.
 
-- **T. 직접 테스트에서 발견한 문제**: 코드가 명세 의도대로 동작하지 않는 것 (21건: 해결 11, 일부 해결 3, 미해결 7). 미해결 중 실제로 기능이 안 되는 것은 "T. 발견한 문제" 절 상단 표(🔴🟠🟡⚪ 등급) 참고
-- **A. 팀 결정 항목**: 이 저장소에서 정할 수 있지만 팀 결정이 필요한 것 (13개 중 결정 4, 보류 9)
+- **T. 직접 테스트에서 발견한 문제**: 코드가 명세 의도대로 동작하지 않는 것 (21건: 해결 12, 일부 해결 3, 미해결 6). 미해결 중 실제로 기능이 안 되는 것은 "T. 발견한 문제" 절 상단 표(🔴🟠🟡⚪ 등급) 참고
+- **A. 팀 결정 항목**: 이 저장소에서 정할 수 있지만 팀 결정이 필요한 것 (13개 중 결정 5, 보류 8)
 - **B. 명세끼리 안 맞는 부분**: 명세 원문 수정이 필요한 것 (백엔드·기획 확인)
 - **C. DB 설계와 API 명세 불일치**: 이 저장소가 정할 수 없는 것 (백엔드 확인)
 
@@ -44,7 +44,7 @@ main(PR #7 병합 시점) 코드를 대상으로 아래를 확인했다. 실제 
 | 등급 | 항목 | 안 고치면 실제로 벌어지는 일 |
 | --- | --- | --- |
 | 🔴 기능이 사실상 없음 | **T14 / A2** (SCDS 가치관 기반 충돌 감지) | RULE-01(캐릭터 가치관 ↔ 위반 키워드 연결)이 없어서, 기획서·SCDS 예시의 핵심 시나리오("폭력 회피" 가치관 캐릭터가 "잔혹하게 살해"라는 사건을 냈을 때 감지)가 **world_rules에 정확히 같은 키워드가 없으면 절대 감지되지 않는다.** 지금은 RULE-02(WorldRule.violation_keywords 매칭)만 되므로, 세계관 규칙을 안 만든 프로젝트는 SCDS가 사실상 아무것도 잡지 못한다 |
-| 🟠 조건부로 백엔드가 죽을 수 있음 | **T18 / A4** (`SCHEMA_VALIDATION_FAILED`가 HTTP_STATUS에 없음) | 백엔드가 `HTTP_STATUS[code]`처럼 딕셔너리를 그대로 쓰면, LLM 응답이 스키마와 안 맞는 순간(드물지 않음) `KeyError`로 백엔드가 죽는다. 패키지 자체는 정상 응답을 반환하므로, `HTTP_STATUS.get(code, 502)`처럼 기본값을 넣어 방어하면 지금 당장은 안전하다(README에 이미 안내함) |
+| ✅ 해결 | **T18 / A4** (`SCHEMA_VALIDATION_FAILED`가 HTTP_STATUS에 없음) | 스키마 불일치를 모듈의 `AI_*_FAILED`로 바꿔 보내고 원래 코드는 `details.internal_code`에 남겨, 반환되는 `error.code`가 모두 `HTTP_STATUS`에 있게 했다 |
 | 🟡 정확도만 떨어짐 (기능은 됨) | **T5 / A10** (SSM "1화" 챕터 인식) | 챕터 제목이 "N장" 형식이 아니면 원고 전체가 청크 하나로 처리된다. 결과는 나오지만 챕터별로 사건 위치가 구분되지 않는다 |
 | ⚪ 하지 않음 (명세 근거 없음) | T8(.env 미읽음), T9(입력 크기 상한 없음), T16(인젝션 방어 없음) | .env는 백엔드가 환경변수로 넘기면 되고, 나머지 둘은 특정 입력에서만 발생하며 실패해도 정해진 에러 형식으로 응답한다. 명세에 근거가 없어 방침상 하지 않는다 |
 
@@ -69,7 +69,7 @@ main(PR #7 병합 시점) 코드를 대상으로 아래를 확인했다. 실제 
 | T15 | 중간 | SCDS | **응답 모양이 경우마다 다르다.** 성공은 `{"conflicts": [...]}`(status 없음), 건너뜀은 `{"rule_result": ..., "status": ...}`다. 백엔드가 키가 있는지로 분기해야 한다 | 두 응답의 data 키 비교 | ✅ 해결: skipped·no_candidate·completed 모두 `data.status`와 `data.rule_result`를 가짐 |
 | T16 | 중간 | 공통 | **프롬프트 인젝션 방어가 없다.** 시스템 프롬프트 없이 사용자 입력을 구분자 없이 지시문 뒤에 이어붙인다. 가드레일 테스트는 가짜 LLM이라 "죽지 않는지"만 확인했지, 인젝션이 막히는지는 확인하지 못했다 | 생성된 프롬프트·요청 인자 확인 | ⚪ 하지 않음(명세 근거 없음): 프롬프트 튜닝이라 CLAUDE.md 절대 규칙상 범위 밖 |
 | T17 | 중간 | AIQ | **후속 질문의 이전 대화를 받을 수 없다.** AIQ 4.4는 스레드에 후속 질문을 이어가지만 `run_aiq`에는 이전 메시지를 넘길 인자가 없어 매번 첫 질문처럼 답한다 | 시그니처 확인 | ✅ 해결: `run_aiq(..., messages=)`로 같은 스레드의 이전 메시지(AIQ 2.2 `role`/`content`)를 받아 프롬프트의 "이전 대화" 블록에 시간순으로 넣음. role이 user/assistant가 아니거나 content가 비면 `INVALID_INPUT` |
-| T18 | 중간 | 공통 | **내부용 코드는 HTTP 상태 표에 없다.** 백엔드가 `HTTP_STATUS[code]`로 변환하면 `SCHEMA_VALIDATION_FAILED`에서 KeyError가 난다 | `core/errors.py` 확인 | 미해결 (오류 수정, 다른 개발자): A4와 함께 처리. 방침상 명세 코드(`AI_*_FAILED`)로 바꿔 보내는 쪽이 맞다 |
+| T18 | 중간 | 공통 | **내부용 코드는 HTTP 상태 표에 없다.** 백엔드가 `HTTP_STATUS[code]`로 변환하면 `SCHEMA_VALIDATION_FAILED`에서 KeyError가 난다 | `core/errors.py` 확인 | ✅ 해결: A4 ①대로 모듈별 `AI_*_FAILED`(502)로 반환, `details.internal_code: "SCHEMA_VALIDATION_FAILED"`와 `details.errors`에 원인을 남김 |
 | T19 | 낮음 | 공통 | `core/mapping.py`가 어디에서도 쓰이지 않는다 (T1의 원인) | grep | ✅ 해결: SCDS에서 사용(T1) |
 | T20 | 낮음 | 공통 | 버전이 `pyproject.toml`과 `__init__.py` 두 곳에 따로 적혀 있어 어긋날 수 있다 | 파일 확인 | ✅ 해결: 버전은 `__init__.py`의 `__version__` 한 곳, `pyproject.toml`은 hatch가 여기서 읽음 |
 | T21 | 높음 | 공통 | **프롬프트가 자리표시 수준이다.** 다섯 모듈 `prompt.py`가 한두 줄짜리 지시문이라 명세의 추출 기준(카테고리 정의, 근거 구절 규칙, 필드 설명)이 모델에 전달되지 않는다 | 실제 호출(아래 "실제 호출 결과"): REX가 규칙 0개, NLCD 값 표현이 명세 예시와 다름 | 미해결: 절대 규칙상 프롬프트 튜닝은 범위 밖이라 담당·범위를 팀이 먼저 정한다(CLAUDE.md 2항) |
@@ -110,7 +110,7 @@ A1 근거: ASS 확정 시 `character_name`이 비어 있으면 400 `MISSING_REQU
 | --- | --- | --- | --- | --- | --- | --- |
 | A2 | SCDS RULE-01/03/04 판정 방식 | 예시(SCDS 4.6)는 가치관 "폭력 회피"와 문구 "잔혹하게 살해"를 연결하지만, 그 연결 사전이 명세에 없다. 원본 기능 명세서(SCDS v0.1)도 없음 | `WorldRule.violation_keywords` 매칭(RULE-02)만 동작. 캐릭터 가치관 충돌은 감지 못 함 | ① 가치관별 위반 키워드 사전(팀 제공) ② RULE-02만 유지 ③ 캐릭터에 values가 있으면 항상 AI 분석(기획서 11-2 "선택적 AI 호출" 원칙과 충돌) | Dev B | `modules/scds/rules.py` |
 | A3 | SCDS severity 판정 기준 | SCDS 2.7은 `low/medium/high` 값만 있고 기준이 없다 | LLM이 고르도록 스키마만 있음 (기준 없음) | ① AI가 판단(프롬프트에 기준 명시) ② 룰별 고정값 | Dev B | `modules/scds/schema.py` |
-| A4 | 내부용 에러 코드 노출 방식 | `AI_TIMEOUT`, `SCHEMA_VALIDATION_FAILED`는 명세에 없다 | LLM 응답이 스키마와 안 맞으면 `SCHEMA_VALIDATION_FAILED`가 그대로 나감. HTTP 상태 미정 | ① 모듈별 `AI_*_FAILED`(502)로 바꿔 보내고 원래 코드는 details에 남김 ② 그대로 노출하고 명세에 코드·HTTP 상태 추가. **방침상 ① 권장** | 공동 | `core/errors.py`, `core/runner.py` |
+| A4 | 내부용 에러 코드 노출 방식 | `AI_TIMEOUT`, `SCHEMA_VALIDATION_FAILED`는 명세에 없다 | ✅ ①로 해결: 모듈별 `AI_*_FAILED`로 반환하고 `details.internal_code`에 원래 코드를 남김 | ① 모듈별 `AI_*_FAILED`(502)로 바꿔 보내고 원래 코드는 details에 남김 ② 그대로 노출하고 명세에 코드·HTTP 상태 추가. **방침상 ① 권장** | 공동 | `core/errors.py`, `core/runner.py` |
 | A5 | NLCD `duplicate_of` 판정 주체 | NLCD 2.1/4.1. 이전 추출 이력은 백엔드 DB에만 있다 | 패키지는 관여하지 않음 | ① 백엔드 ② 패키지(이전 추출 목록을 입력으로 받아 유사도 판정, 시그니처 변경) | Dev A | — |
 | A6 | REX `source_chapter`를 채우는 주체 | REX 2.1에 필드는 있지만 `run_rex`는 원고 텍스트만 받아 챕터 번호를 모른다 | 항상 `null` | ① 챕터 목록(MSU Chapter)을 입력으로 받아 패키지가 채움(시그니처 변경) ② 백엔드가 챕터별로 호출하고 번호를 붙임 | Dev A | `modules/rex/schema.py` |
 | A9 | SSM 분량 부족 기준 | SSM 1.4/4.1에 `MANUSCRIPT_TOO_SHORT`(422)는 있지만 기준값이 없다 | 완전히 비어 있을 때만 반환 | ① 현재 유지 ② 최소 글자 수 ③ 최소 챕터 수 | Dev B | `modules/ssm/module.py` |

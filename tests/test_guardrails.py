@@ -87,7 +87,9 @@ def test_schema_mismatched_llm_response_returns_schema_validation_error(monkeypa
 
     monkeypatch.setattr("prolog_ai.core.runner.call_llm", wrong_shape)
     result = run(monkeypatch, "정상 입력")
-    assert result["error"]["code"] == "SCHEMA_VALIDATION_FAILED"
+    assert result["error"]["code"] == "AI_EXTRACTION_FAILED"
+    assert result["error"]["details"]["internal_code"] == "SCHEMA_VALIDATION_FAILED"
+    assert result["error"]["details"]["errors"]
 
 
 def test_evidence_not_in_source_is_filtered_and_counted(monkeypatch):

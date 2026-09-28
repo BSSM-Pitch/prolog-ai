@@ -16,7 +16,7 @@
 3. 개발·테스트 환경에서는 `USE_FAKE_LLM=1`로 API 없이 돌릴 수 있다.
 4. 함수는 동기이고 한 번에 수십 초 걸릴 수 있다. 호출 한 번의 제한은 30초(AIQ·SCDS AI 분석은 90초)이고 재시도까지 합치면 AIQ·SCDS는 최악 약 4분 40초다. 비동기 작업(워커)에서 호출하고, 결과로 작업 상태를 정한다(README "백엔드 작업 상태와 연결").
 5. SCDS는 사건 저장 시 `run_scds_rules`(동기, LLM 없음)로 후보를 먼저 응답하고, `status`가 `queued`면 워커에서 `run_scds_analysis(event, rule_result, characters)`로 AI 분석을 한다. 재시도도 `run_scds_analysis`를 다시 부른다. 확정 캐릭터(ASS ConfirmedCharacter)도 넘겨야 캐릭터 설정이 룰 검출·AI 분석에 들어간다.
-6. `SCHEMA_VALIDATION_FAILED`는 HTTP 상태가 미정이라 `HTTP_STATUS.get(code, 502)`처럼 기본값을 둔다.
+6. 반환되는 `error.code`는 모두 `HTTP_STATUS`에 있다. AI 응답이 스키마와 안 맞으면 `AI_*_FAILED`(502)로 오고, `details.internal_code`가 `SCHEMA_VALIDATION_FAILED`다.
 
 ## 알려진 한계 (자세한 내용은 `docs/specs/claude/WARN.md`)
 
