@@ -325,3 +325,27 @@ def test_run_aiq_whole_scope_has_no_selection_block(llm_calls):
     llm_calls["responses"] = [{"content": "답"}]
     run_aiq("질문", "원고 본문", scope="whole")
     assert "선택 구간(" not in llm_calls["prompts"][0]
+
+
+# --- AIQ: 후속 질문(이전 메시지를 프롬프트에 넣음) ---
+
+
+def test_run_aiq_previous_messages_are_in_prompt_in_order(llm_calls):
+    llm_calls["responses"] = [{"content": "답"}]
+    messages = [
+        {"message_id": "msg_1", "role": "user", "content": "첫 질문", "status": "completed"},
+        {"message_id": "msg_2", "role": "assistant", "content": "첫 답변", "status": "completed"},
+    ]
+    result = run_aiq("3장에서는 어떤 방향이 좋을까요?", "원고 본문", messages=messages)
+    assert "data" in result
+    prompt = llm_calls["prompts"][0]
+    assert "이전 대화:\n[user] 첫 질문\n[assistant] 첫 답변" in prompt
+    assert prompt.index("이전 대화:") < prompt.index("질문: 3장에서는")
+    assert "msg_1" not in prompt
+
+
+@pytest.mark.parametrize("messages", [None, []])
+def test_run_aiq_first_question_has_no_history_block(llm_calls, messages):
+    llm_calls["responses"] = [{"content": "답"}]
+    run_aiq("질문", "원고 본문", messages=messages)
+    assert "이전 대화:" not in llm_calls["prompts"][0]

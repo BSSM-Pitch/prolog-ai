@@ -8,4 +8,7 @@ def build_prompt(data: dict) -> str:
     if data["scope"] == "selection":
         start, end = data["selection_range"]["start"], data["selection_range"]["end"]
         prompt += f"선택 구간({start}~{end}):\n{data['manuscript_text'][start:end]}\n\n"
+    if data["messages"]:
+        history = "\n".join(f"[{m['role']}] {m['content']}" for m in data["messages"])
+        prompt += f"이전 대화:\n{history}\n\n"
     return prompt + f"질문: {data['question']}"
