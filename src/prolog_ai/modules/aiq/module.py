@@ -9,6 +9,9 @@ from prolog_ai.modules.aiq.prompt import build_prompt
 from prolog_ai.modules.aiq.schema import AIQOutput
 
 SCOPES = ("whole", "selection")
+# 답변은 긴 글이라 다른 모듈보다 오래 걸린다(실측 약 30초). 명세상 AIQ는 폴링(비동기)이라
+# 시간 상한이 없으므로 기본값(30초)보다 넉넉하게 둔다. 재시도 포함 최악 약 4분 40초.
+AIQ_TIMEOUT_SECONDS = 90.0
 
 
 def _invalid_range(message: str, selection_range: Any) -> InputValidationError:
@@ -58,4 +61,5 @@ def run_aiq(
         validate=_validate,
         build_prompt=build_prompt,
         output_schema=AIQOutput,
+        timeout=AIQ_TIMEOUT_SECONDS,
     )

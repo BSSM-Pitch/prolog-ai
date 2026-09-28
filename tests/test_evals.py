@@ -33,7 +33,7 @@ def test_every_case_passes_format_check_under_fake_llm(module):
 
 
 def test_scds_case_status_is_decided_without_calling_llm(monkeypatch):
-    def boom(prompt, *, schema):
+    def boom(prompt, *, schema, **_):
         raise AssertionError("SCDS 케이스는 LLM을 부르면 안 된다")
 
     monkeypatch.setattr("prolog_ai.core.runner.call_llm", boom)

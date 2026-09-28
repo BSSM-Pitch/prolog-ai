@@ -183,3 +183,16 @@ def test_public_function_maps_real_path_failures_to_module_codes(fake_client):
     fake_client.calls.clear()
     fake_client.behaviors = [tool_response("{}", finish_reason="length")]
     assert run_nlcd("피터는 책임감이 강하다.")["error"]["code"] == "AI_EXTRACTION_FAILED"
+
+
+def test_aiq_uses_longer_timeout_than_other_modules(fake_client):
+    from prolog_ai import run_aiq, run_nlcd
+    from prolog_ai.modules.aiq.module import AIQ_TIMEOUT_SECONDS
+
+    fake_client.behaviors = [tool_response({"content": "답"})]
+    run_aiq("질문", "원고", "whole")
+    assert fake_client.init_kwargs["timeout"] == AIQ_TIMEOUT_SECONDS > llm.DEFAULT_TIMEOUT_SECONDS
+
+    fake_client.behaviors = [tool_response({})]
+    run_nlcd("피터는 책임감이 강하다.")
+    assert fake_client.init_kwargs["timeout"] == llm.DEFAULT_TIMEOUT_SECONDS
