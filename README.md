@@ -5,7 +5,7 @@ Prolog 서비스의 AI 모듈만 담는 파이썬 패키지입니다. 백엔드(
 ## 설치 방법
 
 ```bash
-pip install git+https://github.com/BSSM-Pitch/prolog-ai.git@<태그>
+pip install git+https://github.com/BSSM-Pitch/prolog-ai.git
 ```
 
 ## 로컬 개발 방법
