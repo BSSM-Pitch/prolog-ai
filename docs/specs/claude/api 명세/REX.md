@@ -63,8 +63,8 @@ Authorization: Bearer {access_token}
 | --- | --- | --- | --- |
 | `extraction_id` | string | Y | 추출 작업 고유 ID |
 | `manuscript_id` | string | Y | 대상 원고 ID |
-| `status` | string | Y | `queued` | `extracting` | `completed` | `failed` |
-| `extracted_rules` | object[] | N | 완료 시 `[{description, violation_keywords, evidence, source_chapter}]` |
+| `status` | string | Y | `queued` | `running` | `completed` | `failed` (DB `ops.jobs.status`) |
+| `extracted_rules` | object[] | N | 완료 시 `[{title, description, violation_keywords, evidence, source_chapter}]`. `title`은 AI가 만드는 규칙 제목(최대 200자) |
 | `created_at` | string(ISO8601) | Y | 생성 시각 |
 
 ### 2.2 WorldRule (SCDS 2.2와 동일 리소스, 필드 확장)
@@ -73,6 +73,7 @@ Authorization: Bearer {access_token}
 | --- | --- | --- | --- |
 | `rule_id` | string | Y | 규칙 고유 ID |
 | `project_id` | string | Y | 소속 프로젝트 ID |
+| `title` | string | Y | 규칙 제목, 최대 200자 (DB `world_rules.title` NOT NULL). AI 추출 시 `extracted_rules[].title`을 그대로 쓴다 |
 | `description` | string | Y | 규칙 설명 |
 | `violation_keywords` | string[] | N | 위반 판정 키워드 (SCDS RULE-02 판정에 사용) |
 | `origin` | string | Y | `ai_extracted` | `user_added` |
@@ -121,13 +122,13 @@ Authorization: Bearer {access_token}
     "extraction_id": "rex_701",
     "status": "completed",
     "extracted_rules": [
-      { "description": "마법은 계약 없이 발현될 수 없다", "violation_keywords": ["즉흥 마법", "무계약 시전"], "evidence": "모든 주문은 정령과의 계약을 통해서만...", "source_chapter": 2 }
+      { "title": "계약 마법", "description": "마법은 계약 없이 발현될 수 없다", "violation_keywords": ["즉흥 마법", "무계약 시전"], "evidence": "모든 주문은 정령과의 계약을 통해서만...", "source_chapter": 2 }
     ]
   }
 }
 ```
 
-**Response 200 — 진행 중**: `status: "extracting"`, `extracted_rules: []`
+**Response 200 — 진행 중**: `status: "running"`, `extracted_rules: []`
 
 **Response 200 — 실패**: `status: "failed"`, `error.code: "AI_EXTRACTION_FAILED"`
 
@@ -144,7 +145,7 @@ Authorization: Bearer {access_token}
 **Request Body**
 
 ```json
-{ "selected_indices": [0], "edits": { "0": { "description": "마법은 반드시 정령과의 계약을 통해서만 발현된다" } } }
+{ "selected_indices": [0], "edits": { "0": { "title": "계약 마법", "description": "마법은 반드시 정령과의 계약을 통해서만 발현된다" } } }
 ```
 
 **Response 201**: 확정된 `WorldRule[]` 반환(각 `origin: "ai_extracted"`, `extraction_id` 포함) · **Response 409**: `status`가 `completed`가 아니면 `EXTRACTION_NOT_READY`
@@ -157,7 +158,7 @@ Authorization: Bearer {access_token}
 
 `POST /projects/{projectId}/world-rules`
 
-**Request Body**: `{ "description": "...", "violation_keywords": ["..."] }` → **Response 201**: `origin: "user_added"`
+**Request Body**: `{ "title": "...", "description": "...", "violation_keywords": ["..."] }` (`title` 필수, 최대 200자) → **Response 201**: `origin: "user_added"`
 
 ### 4.7 규칙 수정
 

@@ -4,7 +4,7 @@
 청킹(SSM)과 룰 검출(SCDS)은 모듈마다 기준이 달라 뼈대 밖(각 모듈의 chunking.py/rules.py와
 module.py)에서 수행하고, 그 결과(스킵 여부, 나뉜 입력)만 이 함수에 넘기거나 이 함수를
 아예 호출하지 않는다. SCDS는 응답에 status를 붙이기 위해 make_status_response()를 쓰며,
-skip/no_candidate일 때는 run_module을 호출하지 않는다.
+skipped(참조 데이터 없음·후보 없음)일 때는 run_module을 호출하지 않는다.
 
 어떤 예외가 나도 이 함수는 죽지 않고 errors.py 형식으로 반환한다. 빈 결과(추출된 항목이
 없음)는 에러가 아니라 빈 배열을 담은 정상 응답이다.
@@ -43,7 +43,7 @@ class InputValidationError(Exception):
 def make_status_response(
     status: RunStatus, data: dict[str, Any], meta: dict[str, Any] | None = None
 ) -> dict[str, Any]:
-    """data에 status를 붙인 성공 응답. SCDS가 skipped/no_candidate/completed를 같은 모양으로 반환할 때 쓴다."""
+    """data에 status를 붙인 성공 응답. SCDS가 skipped/queued/completed를 같은 모양으로 반환할 때 쓴다."""
     return make_success({**data, "status": status.value}, meta)
 
 

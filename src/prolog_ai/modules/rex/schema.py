@@ -5,8 +5,12 @@ docs/specs/claude/api 명세/REX.md 2.1 RuleExtraction.extracted_rules를 따른
 
 from pydantic import BaseModel, Field
 
+# DB authoring.world_rules.title은 varchar(200) NOT NULL이다(REX 2.1·2.2).
+TITLE_MAX_LENGTH = 200
+
 
 class ExtractedRule(BaseModel):
+    title: str = Field(description=f"규칙을 짧게 부르는 제목 (최대 {TITLE_MAX_LENGTH}자)")
     description: str
     # SCDS 룰 검출(RULE-02)은 이 키워드로만 후보를 찾는다(SCDS 2.2). 비어 있으면 REX → SCDS가 끊기므로
     # 기본값 없이 필수로 둔다.

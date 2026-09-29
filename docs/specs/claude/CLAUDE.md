@@ -53,6 +53,7 @@
 - AIQ·SCDS AI 분석 시간 제한 30초 → 90초 완료(PR #13, #17).
 - AIQ 후속 질문(PR #15), SCDS 룰 검출/AI 분석 분리(PR #16) 완료.
 - 실제 API 호출 검증 완료(8번, 결과는 `WARN.md` "실제 호출 결과").
+- 2026-09-29 `docs/spec-align-db`: 명세를 실제 백엔드 DB 값에 맞춤(WARN.md F1). 패키지는 REX `title` 추가, SSM 노드 제목 200자, SCDS 후보 없음을 `skipped`로 반환.
 - 2026-09-29 `fix/backend-alignment`: 남은 오류 수정(T22·T24~T37 등)과 실제 백엔드 스키마 맞춤(AIQ `scope`, SSM `character_ids`, NLCD 중복 값, SCDS 작업 상태 안내).
 - 2026-09-29 전체 재검토 완료(PR #18). 다른 개발자의 `WARN_2.md`를 `WARN.md`에 합쳤다.
 - 다른 개발자의 수정 2건 병합 완료: `fix/core-schema-error-code`(T18·A4, 스키마 불일치를 모듈별 `AI_*_FAILED`로 반환), `fix/scds-conflict-target-filter`(T3, SCDS 후보 번호 방식). 해결된 문제는 WARN.md 문제 목록에서 지웠다.
@@ -107,6 +108,7 @@
 ## 4. 이 저장소 밖 (백엔드·기획 확인)
 
 - WARN.md D1·D3·D7·D8 (실제 백엔드 코드 기준). D3(SCDS `conflict_target`·`chapter` 저장 칸)은 연동 전에 풀어야 한다. D2·D4·D5·D6·D10은 해결됐다.
+- WARN.md F절 (2026-09-29 명세 ↔ 실제 백엔드 대조): F2 백엔드 DB 칸 추가 4건, F3 이미 구현된 백엔드 코드 버그 8건, F4 남은 불일치. db.md는 실제 마이그레이션 기준으로 다시 써야 한다.
 - WARN.md B1~B18 (명세끼리 안 맞는 부분), C1~C8 (db.md와 API 명세 불일치. C2·C3는 실제 백엔드 스키마에서 해소됨).
 
 ## 5. 검증 (허락 필요)

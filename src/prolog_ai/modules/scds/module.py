@@ -12,7 +12,8 @@ characters는 ASS ConfirmedCharacter(ASS 2.4) 목록이며, 2단계 결정대로
 core/mapping.py로 SCDS Character 필드(traits/values/influences)로 바꿔 쓴다.
 
 응답은 SCDS 2.5 ConflictCheck와 같은 모양으로 맞춘다.
-- 룰 검출: data = {"status": skipped | no_candidate | queued, "rule_result"}
+- 룰 검출: data = {"status": skipped | queued, "rule_result"}. 후보가 없어도 skipped이며
+  참조 데이터가 없는지(rule_result.skipped=True) 후보가 없는지(False)는 rule_result로 구분한다(SCDS 2.5)
 - AI 분석 성공: data = {"status": "completed", "rule_result", "conflicts"}
 - AI 실패: error.details.rule_result에 룰 후보를 남긴다 (SCDS 4.7 "failed면 후보만 표시")
 """
@@ -140,10 +141,9 @@ def _conflicts_from_candidates(conflicts: list[dict], candidates: list[dict]) ->
 
 
 def _rule_status_response(rule_result: dict[str, Any]) -> dict[str, Any]:
-    if rule_result["skipped"]:
+    # 백엔드 ops.jobs.status에는 no_candidate가 없어 후보 없음도 skipped로 낸다(SCDS 2.5).
+    if rule_result["skipped"] or not rule_result["has_candidate"]:
         status = RunStatus.SKIPPED
-    elif not rule_result["has_candidate"]:
-        status = RunStatus.NO_CANDIDATE
     else:
         status = RunStatus.QUEUED
     return make_status_response(status, {"rule_result": rule_result})
@@ -203,7 +203,7 @@ def run_scds_analysis(
 ) -> dict[str, Any]:
     """run_scds_rules가 돌려준 rule_result로 AI 분석만 한다. 재시도(SCDS 4.8)도 이 함수를 다시 부른다.
 
-    후보가 없는 rule_result(skipped/no_candidate)를 받으면 LLM을 부르지 않고 그 상태를 그대로 돌려준다.
+    후보가 없는 rule_result(skipped)를 받으면 LLM을 부르지 않고 그 상태를 그대로 돌려준다.
     """
     characters = [] if characters is None else characters
     _validate_event(event)

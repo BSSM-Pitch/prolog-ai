@@ -59,9 +59,10 @@ Authorization: Bearer {access_token}
 | --- | --- | --- | --- |
 | `thread_id` | string | Y | 스레드 고유 ID |
 | `manuscript_id` | string | Y | 대상 원고 ID |
-| `scope` | string | Y | `whole`(원고 전체) | `selection`(드래그 일부) |
+| `scope` | string | Y | `project`(원고 전체) | `chapter`(챕터 하나) | `selection`(드래그 일부) (DB `qa_threads_scope_chk`) |
+| `chapter_id` | string | null | N | `scope=chapter`일 때 대상 챕터 ID |
 | `selection_range` | object | null | N | `{start, end}` 문자 오프셋, `scope=selection`일 때 필수 |
-| `title` | string | null | N | 스레드 제목(첫 질문으로 자동 생성 가능) |
+| `title` | string | null | N | 스레드 제목, 최대 200자 (DB `qa_threads.title varchar(200)`). 첫 질문으로 자동 생성할 때는 200자로 자른다 |
 | `created_at` | string(ISO8601) | Y | 생성 시각 |
 
 ### 2.2 QAMessage
@@ -104,7 +105,7 @@ Authorization: Bearer {access_token}
 **Request Body — 전체 원고 대상**
 
 ```json
-{ "scope": "whole", "question": "주인공의 동기가 후반부에서 일관되게 유지되나요?" }
+{ "scope": "project", "question": "주인공의 동기가 후반부에서 일관되게 유지되나요?" }
 ```
 
 **Request Body — 드래그한 일부 대상**
@@ -177,7 +178,7 @@ Authorization: Bearer {access_token}
 1. **일부 드래그하여 질문** `POST /projects/proj_1/manuscripts/ms_301/qa-threads` `{ "scope": "selection", "selection_range": {"start":1200,"end":1580}, "question": "이 문단의 어조가 앞부분과 어울리나요?" }` → `thread_id: qa_501`
 2. **답변 폴링** `GET .../qa-threads/qa_501/messages/msg_2` → `status: completed`
 3. **후속 질문** `POST .../qa-threads/qa_501/messages` `{ "content": "3장에서는 어떤 방향이 좋을까요?" }`
-4. **원고 전체에 대한 새 질문(별도 스레드)** `POST .../qa-threads` `{ "scope": "whole", "question": "복선 회수가 잘 되었나요?" }`
+4. **원고 전체에 대한 새 질문(별도 스레드)** `POST .../qa-threads` `{ "scope": "project", "question": "복선 회수가 잘 되었나요?" }`
 
 ---
 

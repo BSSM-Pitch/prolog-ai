@@ -178,11 +178,13 @@ def test_schema_mismatched_llm_response(module, raw, monkeypatch):
             {
                 "extracted_rules": [
                     {
+                        "title": "폭력 금지",
                         "description": "폭력 금지",
                         "violation_keywords": ["살해"],
                         "evidence": "강도를 잔혹하게 살해함",
                     },
                     {
+                        "title": "지어낸 규칙",
                         "description": "지어낸 규칙",
                         "violation_keywords": [],
                         "evidence": "원문에 없는 문장",
@@ -206,7 +208,7 @@ def test_evidence_not_in_source_is_removed(module, raw, field, monkeypatch):
 
 @pytest.mark.parametrize(
     "world_rules, status",
-    [([], "skipped"), ([{"rule_id": "R", "description": "d", "violation_keywords": ["없는말"]}], "no_candidate")],
+    [([], "skipped"), ([{"rule_id": "R", "description": "d", "violation_keywords": ["없는말"]}], "skipped")],
 )
 def test_scds_skip_paths_never_call_llm(world_rules, status, monkeypatch):
     calls = []
@@ -386,7 +388,7 @@ def _rule(keywords, rule_id="wr_001"):
 
 def test_scds_blank_keyword_matches_nothing():
     result = run_scds_rules({"character_ids": ["c1"], "content": "x y"}, [_rule([" ", ""])])
-    assert result["data"]["status"] == "no_candidate"
+    assert result["data"]["status"] == "skipped"
 
 
 def test_scds_keyword_matches_despite_whitespace_difference():

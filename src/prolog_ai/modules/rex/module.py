@@ -5,7 +5,7 @@ from typing import Any
 from prolog_ai.core.guard import expect_text, public_api
 from prolog_ai.core.runner import run_module
 from prolog_ai.modules.rex.prompt import build_prompt
-from prolog_ai.modules.rex.schema import REXOutput
+from prolog_ai.modules.rex.schema import TITLE_MAX_LENGTH, REXOutput
 
 # 원고 전체를 한 번에 넣어 기본 제한(30초)을 넘기기 쉽다. 명세상 REX는 비동기(폴링)라
 # 시간 상한이 없으므로 AIQ·SCDS와 같이 둔다(WARN.md T35).
@@ -22,11 +22,17 @@ def clean_keywords(keywords: list[str]) -> list[str]:
     return cleaned
 
 
+def _clean_title(title: str, description: str) -> str:
+    """제목을 DB 길이(200자)에 맞춘다. AI가 제목을 비우면 설명 앞부분을 제목으로 쓴다."""
+    return (title.strip() or description)[:TITLE_MAX_LENGTH].strip()
+
+
 def _clean_rules(rules: list[dict]) -> list[dict]:
-    """설명이 빈 규칙을 버리고, 키워드를 정리하고, 지어낸 source_chapter를 지운다."""
+    """설명이 빈 규칙을 버리고, 제목·키워드를 정리하고, 지어낸 source_chapter를 지운다."""
     return [
         {
             **rule,
+            "title": _clean_title(rule["title"], rule["description"].strip()),
             "description": rule["description"].strip(),
             "violation_keywords": clean_keywords(rule["violation_keywords"]),
             "source_chapter": None,

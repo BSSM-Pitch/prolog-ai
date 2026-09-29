@@ -119,6 +119,7 @@ Authorization: Bearer {access_token}
 | --- | --- | --- | --- |
 | `rule_id` | string | Y | 규칙 고유 ID |
 | `project_id` | string | Y | 소속 프로젝트 ID |
+| `title` | string | Y | 규칙 제목, 최대 200자 (DB `world_rules.title` NOT NULL) |
 | `description` | string | Y | 규칙 설명 |
 | `violation_keywords` | string[] | N | RULE-02 판정에 사용되는 위반 키워드 |
 
@@ -152,7 +153,7 @@ Authorization: Bearer {access_token}
 | `check_id` | string | Y | 검사 작업 고유 ID |
 | `event_id` | string | Y | 대상 사건 ID |
 | `rule_result` | object | Y | 룰 기반 필터링 결과 (2.6 참고) |
-| `status` | string | Y | `skipped` | `no_candidate` | `queued` | `analyzing` | `completed` | `failed` |
+| `status` | string | Y | `skipped` | `queued` | `running` | `completed` | `failed` (DB `ops.jobs.status`). 룰 검출 후보가 없을 때도 `skipped`이며, 참조 데이터가 없어 건너뛴 경우(`rule_result.skipped: true`)와 후보가 없는 경우(`rule_result.skipped: false`, `has_candidate: false`)는 `rule_result`로 구분한다 |
 | `conflict_ids` | string[] | N | 분석 완료 후 생성된 충돌(Conflict) ID 목록 |
 | `created_at` | string(ISO8601) | Y | 생성 시각 |
 | `updated_at` | string(ISO8601) | Y | 갱신 시각 |
@@ -181,7 +182,7 @@ Authorization: Bearer {access_token}
 | `severity` | string | Y | `low` | `medium` | `high` |
 | `advice` | string | Y | AI가 생성한 조언 문장 |
 | `related_chapter_ref` | object | N | `{chapter, anchor}` 관련 설정이 정의된 챕터 참조 |
-| `status` | string | Y | `pending` | `accepted` | `ignored` | `modified` |
+| `status` | string | Y | `open`(검토 대기) | `accepted` | `ignored` | `modified` (DB `conflicts_status_chk`) |
 | `modified_content` | string | null | N | 사용자가 `modified` 처리 시 입력한 수정 내용 |
 | `created_at` | string(ISO8601) | Y | 생성 시각 |
 | `resolved_at` | string(ISO8601) | null | N | 사용자 처리 시각 |
@@ -270,7 +271,7 @@ Authorization: Bearer {access_token}
 ```json
 {
   "data": [
-    { "rule_id": "wr_001", "description": "마법은 계약 없이 발현될 수 없다", "violation_keywords": ["즉흥 마법", "무계약 시전"] }
+    { "rule_id": "wr_001", "title": "계약 마법", "description": "마법은 계약 없이 발현될 수 없다", "violation_keywords": ["즉흥 마법", "무계약 시전"] }
   ]
 }
 ```
@@ -320,7 +321,7 @@ Authorization: Bearer {access_token}
     "event": { "event_id": "evt_501", "chapter": 35, "character_ids": ["char_001"], "content": "강도를 잔혹하게 살해함" },
     "conflict_check": {
       "check_id": "chk_9001",
-      "status": "no_candidate",
+      "status": "skipped",
       "rule_result": { "has_candidate": false, "skipped": false, "skipped_reason": null, "candidates": [] }
     }
   }
@@ -373,7 +374,7 @@ Authorization: Bearer {access_token}
 **Response 200 — 분석 중**
 
 ```json
-{ "data": { "check_id": "chk_9002", "status": "analyzing", "conflict_ids": [] } }
+{ "data": { "check_id": "chk_9002", "status": "running", "conflict_ids": [] } }
 ```
 
 **Response 200 — 완료**
@@ -421,7 +422,7 @@ AI 디렉터 패널에서 사용하는 조회 API.
 
 | 이름 | 타입 | 필수 | 설명 |
 | --- | --- | --- | --- |
-| `status` | string | N | `pending` | `accepted` | `ignored` | `modified` |
+| `status` | string | N | `open` | `accepted` | `ignored` | `modified` |
 | `chapter` | integer | N | 챕터 필터 |
 | `character_id` | string | N | 캐릭터 필터 |
 | `severity` | string | N | `low` | `medium` | `high` |
@@ -440,7 +441,7 @@ AI 디렉터 패널에서 사용하는 조회 API.
       "severity": "high",
       "advice": "현재 캐릭터 설정과 비교했을 때 과도하게 공격적인 행동처럼 보입니다. 분노 끝에 멈추는 방향도 고려할 수 있습니다.",
       "related_chapter_ref": { "chapter": 12, "anchor": "char_001_values_defined" },
-      "status": "pending"
+      "status": "open"
     }
   ],
   "meta": { "next_cursor": null }
@@ -490,7 +491,7 @@ AI 디렉터 패널에서 사용하는 조회 API.
 
 **Response 409**: 이미 처리된 충돌에 재처리 요청 시 `INVALID_STATUS_TRANSITION`
 
-**비고**: `ignored` 처리된 충돌은 동일한 `character_id` + `conflict_target` + `input_event` 조합(중복 판단 키)에 대해 이후 룰 검출 단계에서 재감지되지 않도록 구조화 저장 엔진이 억제 처리한다(기능 명세서 12항).
+**비고**: `ignored` 처리된 충돌은 동일한 억제 키 `sha256(character_id : rule_id : normalize(사건 description))`(DB `conflicts.suppression_key`, `conflict_suppressions`)에 대해 이후 룰 검출 단계에서 재감지되지 않도록 구조화 저장 엔진이 억제 처리한다(기능 명세서 12항).
 
 ### 4.12 충돌 이력 조회 (선택 기능 · SCDS-006)
 
@@ -556,7 +557,7 @@ AI 디렉터 패널에서 사용하는 조회 API.
                  │
                  ▼
         conflict_check.status = completed
-        Conflict 레코드 생성 (status=pending)
+        Conflict 레코드 생성 (status=open)
                  │
                  ▼
 [클라이언트] GET /conflict-checks/{id} 폴링 → completed 확인
@@ -584,7 +585,7 @@ AI 디렉터 패널에서 사용하는 조회 API.
 → `RULE-01` 매칭, `conflict_check.status = "queued"` (`check_id: chk_9002`)
 
 1. **AI 분석 결과 폴링** `GET /projects/proj_1/conflict-checks/chk_9002` → `status: "completed"`, `conflict_ids: ["conf_1024"]`
-2. **AI 디렉터 패널에 조언 표시** `GET /projects/proj_1/conflicts?status=pending&chapter=35` → `advice: "현재 캐릭터 설정과 비교했을 때 과도하게 공격적인 행동처럼 보입니다. 분노 끝에 멈추는 방향도 고려할 수 있습니다."`
+2. **AI 디렉터 패널에 조언 표시** `GET /projects/proj_1/conflicts?status=open&chapter=35` → `advice: "현재 캐릭터 설정과 비교했을 때 과도하게 공격적인 행동처럼 보입니다. 분노 끝에 멈추는 방향도 고려할 수 있습니다."`
 3. **사용자가 "수정"으로 처리** `PATCH /projects/proj_1/conflicts/conf_1024`
 
 ```json

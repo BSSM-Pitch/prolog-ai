@@ -45,7 +45,7 @@ Authorization: Bearer {access_token}
 | `UNSUPPORTED_FILE_FORMAT` | 400 | 지원하지 않는 파일 형식 |
 | `FILE_TOO_LARGE` | 413 | 업로드 파일 용량 초과 |
 | `TEXT_EXTRACTION_FAILED` | 422 | 업로드 파일에서 텍스트 추출 실패 |
-| `SOURCE_TYPE_IMMUTABLE` | 409 | 원고 생성 후 source_type(file/editor) 변경 시도 |
+| `SOURCE_TYPE_IMMUTABLE` | 409 | 원고 생성 후 source_type(upload/editor) 변경 시도 |
 
 ### 1.5 페이지네이션 — 커서 기반 (`limit` 기본 20/최대 100, `cursor`)
 
@@ -60,12 +60,12 @@ Authorization: Bearer {access_token}
 | `manuscript_id` | string | Y | 원고 고유 ID |
 | `project_id` | string | Y | 소속 프로젝트 ID |
 | `title` | string | Y | 원고 제목 |
-| `source_type` | string | Y | `file`(업로드) | `editor`(에디터 작성), 생성 이후 불변 |
-| `file_url` | string | null | N | `source_type=file`일 때 원본 파일 위치 |
+| `source_type` | string | Y | `upload`(업로드) | `editor`(에디터 작성), 생성 이후 불변 (DB `manuscripts_source_type_chk`) |
+| `file_key` | string | null | N | `source_type=upload`일 때 저장소의 원본 파일 키 (URL은 만료되므로 키만 둔다) |
 | `file_format` | string | null | N | `docx` | `txt` | `pdf` 등 |
 | `content` | string | null | N | `source_type=editor`일 때 본문 텍스트(또는 업로드 후 추출된 텍스트) |
 | `chapter_count` | integer | Y | 챕터 수 |
-| `status` | string | Y | `processing`(파일 추출 중) | `ready` | `extraction_failed` |
+| `status` | string | Y | `draft`(업로드 원고의 파일 대기) | `processing`(파일 추출 중) | `ready` | `failed`(추출 실패) (DB `manuscripts_status_chk`) |
 | `created_at` | string(ISO8601) | Y | 생성 시각 |
 | `updated_at` | string(ISO8601) | Y | 수정 시각(자동저장 포함) |
 
@@ -90,7 +90,7 @@ Authorization: Bearer {access_token}
 | 3 | GET | `/projects/{projectId}/manuscripts/{manuscriptId}` | 원고 상세 조회 |
 | 4 | PATCH | `/projects/{projectId}/manuscripts/{manuscriptId}` | 제목/본문 수정 (에디터 자동저장) |
 | 5 | DELETE | `/projects/{projectId}/manuscripts/{manuscriptId}` | 원고 삭제 |
-| 6 | POST | `/projects/{projectId}/manuscripts/{manuscriptId}/file` | 완성 원고 파일 업로드 (multipart, `source_type=file` 전용) |
+| 6 | POST | `/projects/{projectId}/manuscripts/{manuscriptId}/file` | 완성 원고 파일 업로드 (multipart, `source_type=upload` 전용) |
 | 7 | GET | `/projects/{projectId}/manuscripts/{manuscriptId}/chapters` | 챕터 목록 조회 |
 | 8 | POST | `/projects/{projectId}/manuscripts/{manuscriptId}/chapters` | 챕터 추가 |
 | 9 | PATCH / DELETE | `.../chapters/{chapterId}` | 챕터 수정 / 삭제 |
@@ -120,7 +120,7 @@ Authorization: Bearer {access_token}
 { "data": { "manuscript_id": "ms_301", "title": "거미줄 너머", "source_type": "editor", "content": "", "chapter_count": 0, "status": "ready" } }
 ```
 
-**Request Body — 파일 업로드 예정**: `{ "title": "거미줄 너머", "source_type": "file" }` (생성 후 4.6으로 실제 파일 업로드)
+**Request Body — 파일 업로드 예정**: `{ "title": "거미줄 너머", "source_type": "upload" }` (`status: "draft"`로 생성, 4.6으로 실제 파일 업로드)
 
 ### 4.3 원고 상세 조회
 
@@ -148,7 +148,7 @@ Authorization: Bearer {access_token}
 
 **Response 200 — 소용량 파일 즉시 완료**: `status: "ready"`, `content`에 추출된 텍스트 포함 · **Response 400**: `UNSUPPORTED_FILE_FORMAT` · **Response 413**: `FILE_TOO_LARGE`
 
-**비고**: 처리 완료 여부는 4.3 상세 조회로 `status` 폴링하여 확인한다. 추출 실패 시 `status: "extraction_failed"`, `TEXT_EXTRACTION_FAILED` 오류가 `Manuscript.error` 필드에 기록된다(재업로드로 복구, 별도 재시도 API는 두지 않음).
+**비고**: 처리 완료 여부는 4.3 상세 조회로 `status` 폴링하여 확인한다. 추출 실패 시 `status: "failed"`, `TEXT_EXTRACTION_FAILED` 오류가 `Manuscript.error` 필드에 기록된다(재업로드로 복구, 별도 재시도 API는 두지 않음).
 
 ### 4.7~4.9 챕터 CRUD
 
@@ -176,7 +176,7 @@ Authorization: Bearer {access_token}
 
 1. **에디터 작성 원고 생성** `POST /projects/proj_1/manuscripts` `{ "title": "거미줄 너머", "source_type": "editor" }` → `manuscript_id: ms_301`
 2. **자동저장** `PATCH /projects/proj_1/manuscripts/ms_301` `{ "content": "1화. ..." }`
-3. **완성 원고 파일 업로드(다른 프로젝트)** `POST /projects/proj_2/manuscripts` `{ "title": "초고", "source_type": "file" }` → `POST .../manuscripts/ms_302/file` (docx 첨부) → `status: "processing"`
+3. **완성 원고 파일 업로드(다른 프로젝트)** `POST /projects/proj_2/manuscripts` `{ "title": "초고", "source_type": "upload" }` → `POST .../manuscripts/ms_302/file` (docx 첨부) → `status: "processing"`
 4. **처리 완료 확인** `GET /projects/proj_2/manuscripts/ms_302` → `status: "ready"`
 
 ---

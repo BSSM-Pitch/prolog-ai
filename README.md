@@ -43,12 +43,12 @@ set -a; source .env; set +a
 | 함수 | 입력 | 성공 시 `data` |
 | --- | --- | --- |
 | `run_nlcd(source_text)` | 캐릭터 서술 문장 | `personality_tags`, `core_values`, `emotion_keywords` (`[{value, evidence}]`), `influence_relations` (`[{value, type, evidence}]`). 빈 `value`는 버리고, 같은 카테고리의 중복 값(앞뒤 공백 제거·대소문자 무시, 백엔드 `character_attributes` 유니크 인덱스 기준)은 처음 것만 남긴다 |
-| `run_rex(manuscript_text)` | 원고 본문 | `extracted_rules` (`[{description, violation_keywords, evidence, source_chapter}]`). `violation_keywords`는 AI 응답의 필수 필드이고 빈·중복 키워드는 버린다. `source_chapter`는 챕터 정보를 받지 않으므로 항상 `null` |
+| `run_rex(manuscript_text)` | 원고 본문 | `extracted_rules` (`[{title, description, violation_keywords, evidence, source_chapter}]`). `title`은 최대 200자로 자르고, 비어 있으면 `description` 앞부분을 쓴다(백엔드 `world_rules.title` NOT NULL). `violation_keywords`는 AI 응답의 필수 필드이고 빈·중복 키워드는 버린다. `source_chapter`는 챕터 정보를 받지 않으므로 항상 `null` |
 | `run_aiq(question, manuscript_text, scope="project", selection_range=None, messages=None)` | 질문, 원고(빈 원고는 `INVALID_INPUT`), `project`/`chapter`/`selection`(백엔드 `qa_threads.scope` 값. `project`·`chapter`는 넘겨받은 본문 전체를 본다), `{start, end}` 문자 오프셋, 같은 스레드의 이전 메시지(후속 질문일 때, 시간순 `[{role, content}]`. `role`은 `user`/`assistant`. 그 밖의 필드는 무시. 답변이 없는 `pending`·`failed` 메시지는 빼고 넘긴다. **지금 묻는 질문은 `question`으로만 넘기고 `messages`에 넣지 않는다**) | `content` (답변 문자열) |
-| `run_scds_rules(event, world_rules, characters=None)` | 사건 `{character_ids, content}`, WorldRule 목록 `[{rule_id, description, violation_keywords}]`, ASS 확정 캐릭터 목록(선택) | 룰 검출만(LLM 호출 없음). `status`(`skipped`/`no_candidate`/`queued`), `rule_result` |
+| `run_scds_rules(event, world_rules, characters=None)` | 사건 `{character_ids, content}`, WorldRule 목록 `[{rule_id, description, violation_keywords}]`, ASS 확정 캐릭터 목록(선택) | 룰 검출만(LLM 호출 없음). `status`(`skipped`/`queued`), `rule_result` |
 | `run_scds_analysis(event, rule_result, characters=None)` | 사건, `run_scds_rules`가 준 `rule_result`(SCDS 2.6), ASS 확정 캐릭터 목록(선택) | AI 분석만. `status`(`completed`), `rule_result`, `conflicts` (`[{character_id, conflict_target, severity, advice}]`) |
 | `run_scds(event, world_rules, characters=None)` | `run_scds_rules`와 같음 | 룰 검출 + AI 분석을 한 번에. `status`, `rule_result`, 완료 시 `conflicts` |
-| `run_ssm(manuscript_text, characters=None)` | 원고 본문, ASS 확정 캐릭터 목록(선택, `[{character_id, name, ...}]`) | `acts`, `nodes`, `edges` (SSM 명세 StructureMap 구조). 노드 `character_ids`에는 `characters`에 있는 `character_id`만 남는다(백엔드 `structure_node_characters` 외래키). `characters`를 주지 않으면 빈 배열 |
+| `run_ssm(manuscript_text, characters=None)` | 원고 본문, ASS 확정 캐릭터 목록(선택, `[{character_id, name, ...}]`) | `acts`, `nodes`, `edges` (SSM 명세 StructureMap 구조). 노드 `character_ids`에는 `characters`에 있는 `character_id`만 남는다(백엔드 `structure_node_characters` 외래키). 노드 `title`은 최대 200자로 자른다(`structure_nodes.title`). `characters`를 주지 않으면 빈 배열 |
 
 필드 정의는 각 모듈의 `schema.py`와 `docs/specs/claude/api 명세/`를 따른다.
 
@@ -101,8 +101,8 @@ SCDS는 명세의 ConflictCheck처럼 `status`와 `rule_result`를 항상 담는
 
 | `data.status` | 조건 | LLM 호출 |
 | --- | --- | --- |
-| `skipped` | 세계관 규칙도, 사건 관련 캐릭터 설정도 없음 (`rule_result.skipped_reason: "NO_REFERENCE_DATA"`) | 안 함 |
-| `no_candidate` | 룰 검출 후보 없음 | 안 함 |
+| `skipped` | 세계관 규칙도, 사건 관련 캐릭터 설정도 없음 (`rule_result.skipped: true`, `skipped_reason: "NO_REFERENCE_DATA"`) | 안 함 |
+| `skipped` | 룰 검출 후보 없음 (`rule_result.skipped: false`, `has_candidate: false`) | 안 함 |
 | `queued` | 후보가 있어 AI 분석이 필요함 (`run_scds_rules`만) | 안 함 |
 | `completed` | 후보가 있어 AI 분석 완료. `conflicts` 포함 (`run_scds_analysis`, `run_scds`) | 함 |
 
@@ -163,9 +163,8 @@ HTTP 상태는 `prolog_ai.core.errors.HTTP_STATUS`에도 있다. 반환되는 `e
 | `data`가 있음 | `completed`, `data`를 `result`에 싣는다 |
 | `error`가 있음 | `failed`, `error`를 그대로 `error`에 싣는다 |
 
-백엔드 `ops.jobs.status`는 `queued/running/completed/failed/skipped`만 허용하므로(`jobs_status_chk`) SCDS `data.status`를 작업 상태에 그대로 넣지 않는다.
-SCDS 룰 검출(`run_scds_rules`)은 사건 저장 요청 안에서 동기로 부르고 작업을 만들지 않는다. `data.status`가 `queued`일 때만 AI 작업(`conflict_check`)을 만들고, 그 작업에서 `run_scds_analysis`를 부른다.
-`skipped`·`no_candidate`는 AI 작업이 필요 없는 결과이므로 작업을 만들지 않는다. 명세의 ConflictCheck `status` 값(`skipped`/`no_candidate`/`queued`/…)은 응답 직렬화 계층에서 `data.status`로 보여 준다.
+SCDS 충돌 검사(ConflictCheck, SCDS 2.5)는 백엔드 `ops.jobs`의 `conflict_check` 작업 하나다. 명세 상태값이 `jobs.status`(`queued/running/completed/failed/skipped`)와 같으므로 SCDS `data.status`를 그대로 저장하면 된다.
+사건 저장 요청(SCDS 4.6) 안에서 `run_scds_rules`를 동기로 부르고, 결과 `data.status`(`skipped` 또는 `queued`)와 `rule_result`로 작업을 만든다. `queued`면 AI 워커가 `running`으로 바꾸고 `run_scds_analysis`를 부른 뒤 `completed`/`failed`로 끝낸다.
 
 AI 호출 한 번의 시간 제한은 NLCD 30초, REX·AIQ·SCDS·SSM 90초다(SSM은 챕터마다 한 번씩). AI 재시도는 패키지 안에서 최대 2회 한다(시간 초과·연결 오류·408·409·429·5xx만. 인증 오류 등은 바로 실패). 408로 끝나면 `AI_*_TIMEOUT`이다. OpenRouter에는 도구 호출을 지원하는 제공사로만 보내도록 요청한다. 사용자가 누르는 재시도 API는 같은 함수를 다시 호출하면 된다.
 

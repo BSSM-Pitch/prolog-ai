@@ -16,7 +16,7 @@
 3. 개발·테스트 환경에서는 `USE_FAKE_LLM=1`로 API 없이 돌릴 수 있다.
 4. 함수는 동기이고 한 번에 수십 초 걸릴 수 있다. 호출 한 번의 제한은 NLCD 30초, REX·AIQ·SCDS·SSM 90초(SSM은 챕터마다)이고 재시도까지 합치면 한 번 호출에 최악 약 4분 40초다. 비동기 작업(워커)에서 호출하고, 결과로 작업 상태를 정한다(README "백엔드 작업 상태와 연결"). FastAPI `async def` 안에서 그대로 부르면 그동안 서버 전체가 멈추므로 워커나 `run_in_threadpool`로 부르고, 작업 시간 제한·큐 가시성 타임아웃은 5분 이상으로 둔다(`WARN.md` D8).
 5. SCDS는 사건 저장 시 `run_scds_rules`(동기, LLM 없음)로 후보를 먼저 응답하고, `status`가 `queued`일 때만 AI 작업(`conflict_check`)을 만들어 워커에서 `run_scds_analysis(event, rule_result, characters)`로 AI 분석을 한다. 재시도도 `run_scds_analysis`를 다시 부른다. 확정 캐릭터(ASS ConfirmedCharacter)도 넘겨야 캐릭터 설정이 룰 검출·AI 분석에 들어간다.
-6. 백엔드 값에 맞춘 것: AIQ `scope`는 `project`/`chapter`/`selection`(`qa_threads_scope_chk`), SSM 노드 `character_ids`는 `run_ssm(..., characters=)`로 넘긴 확정 캐릭터의 `character_id`만(`structure_node_characters` 외래키), NLCD 중복 값은 `character_attributes` 유니크 인덱스 기준으로 합친다. SCDS `skipped`·`no_candidate`는 작업을 만들지 않는다(`jobs_status_chk`). 무시한 충돌 억제는 백엔드 `conflict_suppressions`로 거른다.
+6. 백엔드 값에 맞춘 것: AIQ `scope`는 `project`/`chapter`/`selection`(`qa_threads_scope_chk`), SSM 노드 `character_ids`는 `run_ssm(..., characters=)`로 넘긴 확정 캐릭터의 `character_id`만(`structure_node_characters` 외래키), NLCD 중복 값은 `character_attributes` 유니크 인덱스 기준으로 합친다. SCDS 상태값은 `jobs.status`와 같아 그대로 저장한다(후보 없음도 `skipped`, `rule_result`로 구분). 무시한 충돌 억제는 백엔드 `conflict_suppressions`로 거른다.
 7. 반환되는 `error.code`는 모두 `HTTP_STATUS`에 있다. AI 응답이 스키마와 안 맞으면 `AI_*_FAILED`(502)로 오고, `details.internal_code`가 `SCHEMA_VALIDATION_FAILED`다.
 
 ## 알려진 한계 (자세한 내용은 `docs/specs/claude/WARN.md`)

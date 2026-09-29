@@ -9,6 +9,9 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
+# DB insight.structure_nodes.title은 varchar(200)이다(SSM 2.3). 넘으면 module.py가 자른다.
+TITLE_MAX_LENGTH = 200
+
 
 class Act(BaseModel):
     act_name: str
