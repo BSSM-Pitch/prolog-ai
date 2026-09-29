@@ -10,7 +10,10 @@
 노드의 character_ids는 백엔드 structure_node_characters.character_id(캐릭터 uuid 외래키)에
 저장되므로, 넘겨받은 확정 캐릭터(ASS ConfirmedCharacter) 목록의 character_id만 남긴다.
 목록을 주지 않으면 비운다(WARN.md A12 ①, D5).
-TODO: 노드의 chapter 번호와 acts를 전체 원고 기준으로 맞추는 방법은 WARN.md T6·A10 결정 필요.
+노드 chapter와 acts의 chapter_from/to는 LLM이 쓴 값 대신 청크의 챕터 번호(chunking.chapter_numbers)로 채운다.
+LLM은 챕터 하나만 보므로 번호를 모른다(WARN.md T6). 챕터마다 새로 생기는 같은 이름의 막이 이어지면
+하나로 합쳐 chapter_to를 늘린다(3장 원고에서 "발단"이 세 번 나오던 문제).
+TODO: 챕터를 넘는 연결(T23)과 챕터 목록 입력(A10)은 결정 필요.
 """
 
 from typing import Any
@@ -18,7 +21,7 @@ from typing import Any
 from prolog_ai.core.errors import ErrorCode, make_error, make_success
 from prolog_ai.core.guard import expect_list_of, expect_text, expect_type, public_api
 from prolog_ai.core.runner import run_module
-from prolog_ai.modules.ssm.chunking import split_into_chapters
+from prolog_ai.modules.ssm.chunking import chapter_numbers, split_into_chapters
 from prolog_ai.modules.ssm.prompt import build_prompt
 from prolog_ai.modules.ssm.schema import TITLE_MAX_LENGTH, SSMChunkOutput
 
@@ -39,6 +42,39 @@ def _validate_characters(characters: Any) -> list[dict[str, str]]:
         name = expect_text(character.get("name"), f"{field}.name")
         roster.append({"character_id": character_id, "name": name})
     return roster
+
+
+# SSM 2.2 acts 예시 순서. 이야기 단계는 뒤로 돌아가지 않는다.
+ACT_ORDER = ("발단", "전개", "위기", "절정", "결말")
+
+
+def _goes_back(previous: str, current: str) -> bool:
+    return (
+        previous in ACT_ORDER
+        and current in ACT_ORDER
+        and ACT_ORDER.index(current) < ACT_ORDER.index(previous)
+    )
+
+
+def _merge_acts(acts: list[dict], chunk_acts: list[dict], chapter: int) -> None:
+    """청크의 막을 이 챕터 번호로 고치고, 바로 앞 막과 이름이 같으면 이어 붙인다.
+
+    LLM은 챕터 하나만 보고 단계를 정해, 앞 챕터보다 이른 단계를 고르기도 한다(실제 호출: 발단 → 위기 → 전개).
+    단계는 되돌아가지 않으므로 그런 막은 바로 앞 막에 이어 붙인다.
+    """
+    for act in chunk_acts:
+        previous = acts[-1] if acts else None
+        name = act["act_name"].strip()
+        if previous and (previous["act_name"].strip() == name or _goes_back(previous["act_name"].strip(), name)):
+            previous["chapter_to"] = max(previous["chapter_to"], chapter)
+            summary = act["summary"].strip()
+            if summary and summary not in previous["summary"]:
+                joined = previous["summary"].rstrip()
+                if joined and joined[-1] not in ".!?。":
+                    joined += "."
+                previous["summary"] = f"{joined} {summary}".strip()
+            continue
+        acts.append({**act, "chapter_from": chapter, "chapter_to": chapter})
 
 
 @public_api("ssm")
@@ -62,10 +98,11 @@ def run_ssm(
     removed_edge_count = 0
 
     chunks = split_into_chapters(manuscript_text)
-    for chunk_index, chunk in enumerate(chunks):
+    numbers = chapter_numbers(chunks)
+    for chunk_index, (chunk, chapter) in enumerate(zip(chunks, numbers, strict=True)):
         result = run_module(
             module="ssm",
-            input_data={"chapter_text": chunk, "characters": roster},
+            input_data={"chapter_text": chunk, "chapter": chapter, "characters": roster},
             validate=lambda data: data,
             build_prompt=build_prompt,
             output_schema=SSMChunkOutput,
@@ -78,7 +115,7 @@ def run_ssm(
             )
             return result
 
-        acts.extend(result["data"]["acts"])
+        _merge_acts(acts, result["data"]["acts"], chapter)
 
         new_ids: dict[str, str] = {}
         for node in result["data"]["nodes"]:
@@ -89,6 +126,7 @@ def run_ssm(
                 {
                     **node,
                     "node_id": new_id,
+                    "chapter": chapter,
                     "title": node["title"].strip()[:TITLE_MAX_LENGTH],
                     "character_ids": character_ids,
                 }

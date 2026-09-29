@@ -25,6 +25,10 @@ set -a; source .env; set +a
 
 테스트는 실제 API 없이 돈다: `pytest`, `ruff check .`
 
+품질 평가(evals)는 `python evals/run_evals.py`로 돌린다. 기본은 가짜 LLM(형식만 확인)이다.
+`--real`은 실제 API로 호출하고, 기대값을 의미 비교(LLM-as-a-judge, `evals/judge.py`)로 채점한다. 비용이 드므로 필요할 때만 쓴다.
+`--show`는 응답과 채점 판단 이유를, `--exact`는 글자 비교 채점만 한다.
+
 ## 환경변수
 
 | 이름 | 설명 |
@@ -48,7 +52,7 @@ set -a; source .env; set +a
 | `run_scds_rules(event, world_rules, characters=None)` | 사건 `{character_ids, content}`, WorldRule 목록 `[{rule_id, description, violation_keywords}]`, ASS 확정 캐릭터 목록(선택) | 룰 검출만(LLM 호출 없음). `status`(`skipped`/`queued`), `rule_result` |
 | `run_scds_analysis(event, rule_result, characters=None)` | 사건, `run_scds_rules`가 준 `rule_result`(SCDS 2.6), ASS 확정 캐릭터 목록(선택) | AI 분석만. `status`(`completed`), `rule_result`, `conflicts` (`[{character_id, conflict_target, severity, advice}]`) |
 | `run_scds(event, world_rules, characters=None)` | `run_scds_rules`와 같음 | 룰 검출 + AI 분석을 한 번에. `status`, `rule_result`, 완료 시 `conflicts` |
-| `run_ssm(manuscript_text, characters=None)` | 원고 본문, ASS 확정 캐릭터 목록(선택, `[{character_id, name, ...}]`) | `acts`, `nodes`, `edges` (SSM 명세 StructureMap 구조). 노드 `character_ids`에는 `characters`에 있는 `character_id`만 남는다(백엔드 `structure_node_characters` 외래키). 노드 `title`은 최대 200자로 자른다(`structure_nodes.title`). `characters`를 주지 않으면 빈 배열 |
+| `run_ssm(manuscript_text, characters=None)` | 원고 본문, ASS 확정 캐릭터 목록(선택, `[{character_id, name, ...}]`) | `acts`, `nodes`, `edges` (SSM 명세 StructureMap 구조). 노드 `character_ids`에는 `characters`에 있는 `character_id`만 남는다(백엔드 `structure_node_characters` 외래키). 노드 `title`은 최대 200자로 자른다(`structure_nodes.title`). 노드 `chapter`와 막의 `chapter_from/to`는 "제N장/N장" 제목의 번호로 채우고, 이어지는 같은 막은 합친다. `characters`를 주지 않으면 빈 배열 |
 
 필드 정의는 각 모듈의 `schema.py`와 `docs/specs/claude/api 명세/`를 따른다.
 
@@ -132,7 +136,7 @@ AI 분석이 실패해도 룰 후보는 `error.details.rule_result`에 남는다
 
 룰 검출 세부:
 
-- 키워드는 연속 공백·줄바꿈 차이를 무시하고 찾는다("잔혹하게  살해"도 "잔혹하게 살해"로 찾음). 공백만 있는 키워드는 무시한다.
+- 키워드는 연속 공백·줄바꿈 차이를 무시하고 찾는다("잔혹하게  살해"도 "잔혹하게 살해"로 찾음). 글자 그대로 없으면 어절 끝 조사를 떼고 다시 찾는다("대낮에" ↔ "대낮의"). 공백만 있는 키워드는 무시한다.
 - 같은 (캐릭터, 규칙)은 키워드가 여러 개 걸려도 후보 하나로 합친다(처음 걸린 키워드를 `matched_keyword`로 남김).
 - 후보 `rule_id`는 입력 WorldRule의 `rule_id` 그대로다. 백엔드 `insight.conflicts.rule_id`가 `world_rules` 외래키이므로 그대로 저장하면 된다.
 - 무시(`ignored`)한 충돌의 재감지 억제(SCDS 4.11)는 패키지가 하지 않는다. 백엔드 `insight.conflict_suppressions`(`suppression_key`)로 결과 후보를 거른다.

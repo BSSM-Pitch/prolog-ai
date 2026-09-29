@@ -23,7 +23,10 @@ OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
 DEFAULT_MODEL = "deepseek/deepseek-v4-flash"
 DEFAULT_TIMEOUT_SECONDS = 30.0
 DEFAULT_MAX_RETRIES = 2  # 최초 시도 포함 최대 3회 시도
-MAX_OUTPUT_TOKENS = 4096
+# OpenRouter는 추론(thinking) 토큰도 max_tokens에 함께 센다(openrouter.ai/docs/use-cases/reasoning-tokens).
+# DeepSeek은 추론이 기본으로 켜져 있어 4096이면 추론만으로 한도를 채워 출력이 잘리는 일이 실제로 생겼다
+# (2026-09-29, REX 호출 2번). 보이는 출력은 수백~2천 토큰이라 한도만 넉넉히 둔다.
+MAX_OUTPUT_TOKENS = 16384
 # 요청 시간 초과(408)·충돌(409)·속도 제한(429)과 5xx만 다시 시도한다. 인증 오류 등은 다시 해도 같다.
 _RETRYABLE_STATUS = {408, 409, 429}
 

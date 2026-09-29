@@ -9,6 +9,7 @@ TODO: 챕터 경계를 정하는 정확한 기준(제목 패턴, 최대 길이 �
 import re
 
 _CHAPTER_HEADING = re.compile(r"^\s*(제\s*\d+\s*장|\d+\s*장)", re.MULTILINE)
+_HEADING_NUMBER = re.compile(r"^\s*(?:제\s*)?(\d+)\s*장")
 
 
 def split_into_chapters(manuscript_text: str) -> list[str]:
@@ -22,3 +23,17 @@ def split_into_chapters(manuscript_text: str) -> list[str]:
         end = boundaries[i + 1] if i + 1 < len(boundaries) else len(manuscript_text)
         chunks.append(manuscript_text[start:end])
     return chunks
+
+
+def chapter_numbers(chunks: list[str]) -> list[int]:
+    """split_into_chapters가 나눈 청크마다 챕터 번호를 정한다.
+
+    제목("제N장"/"N장")이 있는 청크는 그 N을 쓴다. 첫 제목 앞의 글(프롤로그 등)은 첫 챕터에 속한 것으로 보고
+    첫 제목의 번호를 쓴다. 제목이 하나도 없으면 원고 전체가 1장이다.
+    """
+    numbers: list[int | None] = []
+    for chunk in chunks:
+        match = _HEADING_NUMBER.match(chunk)
+        numbers.append(int(match.group(1)) if match else None)
+    first = next((n for n in numbers if n is not None), 1)
+    return [first if n is None else n for n in numbers]
