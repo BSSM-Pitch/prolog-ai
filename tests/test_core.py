@@ -223,3 +223,44 @@ def test_make_status_response_shape():
         "data": {"check_id": "chk_1", "status": "skipped"},
         "meta": {"skipped_reason": "NO_REFERENCE_DATA"},
     }
+
+
+# --- error.details는 항상 JSON(jsonb)으로 저장할 수 있어야 한다 ---
+
+
+def test_error_details_are_json_safe():
+    import json
+
+    from prolog_ai.core.errors import ErrorCode, make_error
+
+    cyclic: dict = {}
+    cyclic["self"] = cyclic
+
+    class BadRepr:
+        def __repr__(self):
+            raise RuntimeError("bad repr")
+
+    details = {
+        "bytes": b"x",
+        "obj": BadRepr(),
+        "nan": float("nan"),
+        "enum": ErrorCode.INVALID_INPUT,
+        "cyclic": cyclic,
+        1: "non-str key",
+    }
+    error = make_error(ErrorCode.INVALID_INPUT, "m", details)["error"]
+    json.dumps(error, allow_nan=False)
+    assert error["details"]["bytes"] == "b'x'"
+    assert error["details"]["obj"] == "<BadRepr>"
+    assert error["details"]["nan"] == "nan"
+    assert error["details"]["enum"] == "INVALID_INPUT"
+    assert error["details"]["1"] == "non-str key"
+
+
+def test_cyclic_selection_range_is_still_invalid_selection_range():
+    from prolog_ai import run_aiq
+
+    cyclic: dict = {}
+    cyclic["self"] = cyclic
+    result = run_aiq("q", "원고 본문", "selection", cyclic)
+    assert result["error"]["code"] == "INVALID_SELECTION_RANGE"

@@ -55,7 +55,7 @@
 | #18 | 전체 재검토 결과 반영, `WARN_2.md` 통합 | — |
 | `fix/merge-pending-fixes` 브랜치 | 다른 개발자의 수정 2건 병합: `fix/core-schema-error-code`(스키마 불일치를 모듈별 `AI_*_FAILED`로 반환, 원래 코드는 `details.internal_code`), `fix/scds-conflict-target-filter`(AI가 충돌 대상 문자열 대신 후보 번호 `candidate_index`를 고르고 패키지가 후보에서 필드를 채움). 병합 후 테스트 290개 통과 | T18·A4, T3 |
 
-| `fix/backend-alignment` 브랜치 | 남은 오류 수정과 실제 백엔드(`prolog-backend-master`) 스키마에 맞춘 수정. 테스트 307개 통과 | T22·T24~T30·T32~T37, D2·D4·D5·D6·D10, A12, T12·T14·T31 일부 |
+| `fix/backend-alignment` 브랜치 | 남은 오류 수정과 실제 백엔드(`prolog-backend-master`) 스키마에 맞춘 수정. 퍼징(공개 함수 7개 × 이상한 입력·AI 응답 수천 건)에서 찾은 `error.details` JSON 직렬화 실패(bytes·임의 객체·NaN·순환 참조 입력)도 수정. 테스트 309개 통과(Python 3.11, 3.12 wheel 설치) | T22·T24~T30·T32~T37, D2·D4·D5·D6·D10, A12, T12·T14·T31 일부 |
 
 `docs/add-project-docs` 브랜치(`WARN_2.md` 추가)는 내용을 이 문서에 합쳤으므로 병합하지 않는다. 두 fix 브랜치에 들어 있던 `WARN_2.md`도 병합할 때 뺐다.
 

@@ -5,6 +5,7 @@
     실패: {"error": {"code": ..., "message": ..., "details": {}}}
 """
 
+import math
 from enum import StrEnum
 from typing import Any, NamedTuple
 
@@ -68,6 +69,41 @@ MODULE_AI_ERRORS: dict[str, AIErrorCodes] = {
 }
 
 
+_MAX_DETAIL_DEPTH = 20
+
+
+def _json_safe(value: Any, depth: int = 0) -> Any:
+    """details를 JSON으로 저장할 수 있는 값으로 바꾼다.
+
+    details에는 잘못 들어온 입력값을 그대로 담기도 하는데(bytes, 임의 객체 등), 그대로 두면
+    백엔드가 error를 jsonb(ops.jobs.error)에 저장할 때 실패한다. JSON 타입이 아닌 값과
+    jsonb가 받지 않는 NaN·Infinity는 repr로 바꾼다. 자기 자신을 담은 입력에서 무한 재귀하지 않도록
+    _MAX_DETAIL_DEPTH보다 깊은 값은 잘라 낸다.
+    """
+    if isinstance(value, float) and not math.isfinite(value):
+        return repr(value)
+    if isinstance(value, str):
+        # StrEnum 등 str 하위 타입은 값 문자열만 남긴다(__str__·__repr__ 재정의를 거치지 않음).
+        return str.__str__(value)
+    if value is None or isinstance(value, (bool, int, float)):
+        return value
+    if depth >= _MAX_DETAIL_DEPTH:
+        return "..."
+    if type(value) is dict:
+        return {_json_safe(key, depth + 1) if isinstance(key, str) else _safe_repr(key):
+                _json_safe(item, depth + 1) for key, item in value.items()}
+    if type(value) in (list, tuple):
+        return [_json_safe(item, depth + 1) for item in value]
+    return _safe_repr(value)
+
+
+def _safe_repr(value: Any) -> str:
+    try:
+        return repr(value)
+    except Exception:  # noqa: BLE001 - repr이 실패하는 객체도 details에서 죽지 않는다
+        return f"<{type(value).__name__}>"
+
+
 def make_error(
     code: ErrorCode | str, message: str, details: dict[str, Any] | None = None
 ) -> dict[str, Any]:
@@ -75,7 +111,7 @@ def make_error(
         "error": {
             "code": ErrorCode(code).value,
             "message": message,
-            "details": dict(details) if details else {},
+            "details": _json_safe(dict(details)) if details else {},
         }
     }
 
