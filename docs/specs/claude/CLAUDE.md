@@ -48,16 +48,13 @@
 
 **완료 (main 병합됨)**
 
-- 0~6단계, 9단계 완료. PR #1~#17 모두 병합됨. PR별 내용은 `WARN.md` "0. 진행 현황"에 있다.
+- 0~6단계, 9단계 완료. PR #1~#18 모두 병합됨. PR별 내용과 해결된 문제는 `WARN.md` "0. 진행 현황"에 있다.
 - LLM은 OpenRouter를 거쳐 DeepSeek(`deepseek/deepseek-v4-flash`, `PROLOG_AI_MODEL`로 변경 가능)을 쓴다(PR #12 완료). 키는 `OPENROUTER_API_KEY`.
 - AIQ·SCDS AI 분석 시간 제한 30초 → 90초 완료(PR #13, #17).
 - AIQ 후속 질문(PR #15), SCDS 룰 검출/AI 분석 분리(PR #16) 완료.
 - 실제 API 호출 검증 완료(8번, 결과는 `WARN.md` "실제 호출 결과").
-- 2026-09-29 전체 재검토 완료. 다른 개발자의 `WARN_2.md`를 `WARN.md`에 합쳤다.
-
-**병합 대기 (다른 개발자, PR 없음)**
-
-- `fix/core-schema-error-code` (T18·A4), `fix/scds-conflict-target-filter` (T3). 둘 다 main과 합쳐 테스트 통과를 확인했다. 병합할 때 두 브랜치에 들어 있는 `WARN_2.md`는 빼야 한다.
+- 2026-09-29 전체 재검토 완료(PR #18). 다른 개발자의 `WARN_2.md`를 `WARN.md`에 합쳤다.
+- 다른 개발자의 수정 2건 병합 완료: `fix/core-schema-error-code`(T18·A4, 스키마 불일치를 모듈별 `AI_*_FAILED`로 반환), `fix/scds-conflict-target-filter`(T3, SCDS 후보 번호 방식). 해결된 문제는 WARN.md 문제 목록에서 지웠다.
 
 **그 밖에**
 
@@ -99,8 +96,6 @@
 | 프롬프트 작성 담당·범위 | 팀 | 다섯 모듈의 `prompt.py`가 한두 줄짜리 자리표시 문장이고, 도구 스키마에 필드 설명도 없다. 실제 호출에서 REX가 규칙을 하나도 못 뽑았고, NLCD 값 표현이 명세 예시와 달랐다. 명세의 추출 기준(카테고리 정의, 근거 구절 규칙, 출력 필드 설명)을 프롬프트로 옮기는 작업이 필요하지만, 절대 규칙상 "프롬프트 튜닝은 범위 밖"이라 누가 언제 할지 먼저 정한다 | T21 |
 
 ## 3. 오류 수정 (다른 개발자 담당)
-
-병합 대기: T18·A4(`fix/core-schema-error-code`), T3(`fix/scds-conflict-target-filter`).
 
 | 작업 | 내용 | WARN |
 | --- | --- | --- |

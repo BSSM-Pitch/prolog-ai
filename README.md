@@ -84,7 +84,7 @@ set -a; source .env; set +a
 | 키 | 함수 | 의미 |
 | --- | --- | --- |
 | `removed_evidence_count` | NLCD, REX | 근거가 원문에 없어 제거한 항목 수 |
-| `removed_conflict_count` | SCDS | 룰 후보에 없는 캐릭터·설정으로 만들어져 제거한 충돌 수 |
+| `removed_conflict_count` | SCDS | 없는 룰 후보 번호를 가리켜 제거한 충돌 수. AI는 후보 번호만 고르고, `character_id`·`conflict_target`은 패키지가 후보에서 채운다 |
 | `removed_edge_count` | SSM | 없는 노드를 가리켜 제거한 연결 수 |
 
 ### SCDS 응답
@@ -141,9 +141,10 @@ AI 분석이 실패해도 룰 후보는 `error.details.rule_result`에 남는다
 | `AI_EXTRACTION_FAILED` / `AI_EXTRACTION_TIMEOUT` | 502 / 503 | NLCD, REX의 AI 실패 / 시간 초과 |
 | `AI_RESPONSE_FAILED` / `AI_RESPONSE_TIMEOUT` | 502 / 503 | AIQ의 AI 실패 / 시간 초과 |
 | `AI_ANALYSIS_FAILED` / `AI_ANALYSIS_TIMEOUT` | 502 / 503 | SCDS, SSM의 AI 실패 / 시간 초과 |
-| `SCHEMA_VALIDATION_FAILED` | 미정 | AI 응답이 스키마와 맞지 않음. 모듈 내부용 코드로 명세에 없으며 HTTP 상태와 노출 방식은 미결정(`WARN.md` A4) |
 
-HTTP 상태는 `prolog_ai.core.errors.HTTP_STATUS`에도 있다. `SCHEMA_VALIDATION_FAILED`는 이 표에 없으므로 `HTTP_STATUS.get(code, 502)`처럼 기본값을 두고 쓴다.
+AI 응답이 스키마와 맞지 않을 때도 모듈의 `AI_*_FAILED`(502)로 반환한다. 원인은 `details.internal_code: "SCHEMA_VALIDATION_FAILED"`와 `details.errors`로 구분한다(`WARN.md` A4 ①).
+
+HTTP 상태는 `prolog_ai.core.errors.HTTP_STATUS`에도 있다. 반환되는 `error.code`는 모두 이 표에 있으므로 `HTTP_STATUS[code]`로 바로 쓸 수 있다.
 
 ### 백엔드 작업(job) 상태와 연결
 
