@@ -19,6 +19,7 @@
 | C. DB 설계와 API 명세 불일치 | db.md 기준 (백엔드 확인) | 8건 (실제 백엔드 스키마 기준 현황은 D절) |
 | D. 실제 백엔드와 연동 확인 | `prolog-backend-master` 코드·마이그레이션을 직접 읽은 결과 | 남은 5건 (D2·D4·D5·D6·D10 해결) |
 | E. 보완 권장 | 기능은 되지만 품질·비용·운영이 아쉬운 것 (명세 근거 없음) | 12건, 모두 ⚪ |
+| F. 명세 ↔ 실제 백엔드 DB·코드 대조 | 2026-09-29 전 영역(명세 13종) 대조. 명세를 실제 DB에 맞춘 것과 남은 백엔드 작업 | 명세 수정 완료 + 남은 백엔드 작업 |
 
 담당: NLCD·REX·AIQ = Dev A, SCDS·SSM = Dev B, 공통 = 공동
 
@@ -56,6 +57,8 @@
 | `fix/merge-pending-fixes` 브랜치 | 다른 개발자의 수정 2건 병합: `fix/core-schema-error-code`(스키마 불일치를 모듈별 `AI_*_FAILED`로 반환, 원래 코드는 `details.internal_code`), `fix/scds-conflict-target-filter`(AI가 충돌 대상 문자열 대신 후보 번호 `candidate_index`를 고르고 패키지가 후보에서 필드를 채움). 병합 후 테스트 290개 통과 | T18·A4, T3 |
 
 | `fix/backend-alignment` 브랜치 | 남은 오류 수정과 실제 백엔드(`prolog-backend-master`) 스키마에 맞춘 수정. 퍼징(공개 함수 7개 × 이상한 입력·AI 응답 수천 건)에서 찾은 `error.details` JSON 직렬화 실패(bytes·임의 객체·NaN·순환 참조 입력)도 수정. 테스트 309개 통과(Python 3.11, 3.12 wheel 설치) | T22·T24~T30·T32~T37, D2·D4·D5·D6·D10, A12, T12·T14·T31 일부 |
+
+| `docs/spec-align-db` 브랜치 | 명세를 실제 백엔드 DB 값에 맞춤(F절), REX `title` 추가, SSM 노드 제목 200자, SCDS 후보 없음을 `skipped`로 | F절 |
 
 `docs/add-project-docs` 브랜치(`WARN_2.md` 추가)는 내용을 이 문서에 합쳤으므로 병합하지 않는다. 두 fix 브랜치에 들어 있던 `WARN_2.md`도 병합할 때 뺐다.
 
@@ -276,3 +279,60 @@ D2(백엔드 0002에서 해소), D4·D5·D6·D10(`fix/backend-alignment`)은 해
 | E10 | 의존성 | `openai` 버전 범위 없음, 쓰지 않는 `python-dotenv` | 버전 범위 고정, 안 쓰는 의존성 제거 |
 | E11 | 배포 | 버전 태그 없이 main 최신본 설치 | 태그로 고정 (CLAUDE.md에서 하지 않기로 함) |
 | E12 | 쓰지 않는 코드 | `ErrorCode.AI_TIMEOUT`, `SCDSCheckStatus`, `RunStatus.FAILED`, `dropped_emotion_keywords` 계산값 | 정리 |
+
+---
+
+## F. 명세 ↔ 실제 백엔드 DB·코드 대조 (2026-09-29)
+
+명세 13종을 db.md, 실제 백엔드(`prolog-backend-master` 마이그레이션 0001·0002와 코드)와 대조했다. **db.md는 실제 DB와 거의 달라**(팀·프로젝트·알림·원고·챕터 구조 등) 실제 마이그레이션을 기준으로 삼았다. db.md는 실제 마이그레이션 기준으로 다시 써야 한다.
+
+### F1. 명세를 실제 DB에 맞춰 고친 것 (`docs/spec-align-db`)
+
+| 명세 | 바꾼 내용 | DB 근거 |
+| --- | --- | --- |
+| ASS | 초안 status `pending_review` → `pending` | `character_drafts_status_chk` |
+| ASS | 항목 `field` 값 복수형 → 단수형(`personality_tag` 등) | `character_draft_items_category_chk` |
+| ASS | 확정 캐릭터 status `confirmed` → `active`/`archived` | `characters_status_chk` |
+| ASS | 편집 이력: `added/modified/removed`, `value`, `at` → `phase`, `create/update/delete`, `before_value`, `after_value`, `created_at` | `character_edit_histories` |
+| ASS | `create_new`는 다른 이름(`character_name`)을 함께 보내야 함 | `characters_project_name_active_uq` |
+| SCDS | 충돌 status `pending` → `open` | `conflicts_status_chk` |
+| SCDS | ConflictCheck status를 `skipped/queued/running/completed/failed`로. 후보 없음도 `skipped`, `rule_result`로 구분. **패키지도 `no_candidate` 대신 `skipped`를 반환** | `jobs_status_chk` |
+| SCDS | 무시 억제 키를 `sha256(character_id : rule_id : normalize(사건 description))`로 | `conflicts.suppression_key` |
+| SCDS·REX | WorldRule에 `title`(필수, 200자) 추가. REX `extracted_rules`에도 `title` 추가, **패키지가 제목을 만든다**(비면 설명 앞부분) | `world_rules.title` NOT NULL |
+| NLCD·REX·SSM | 작업 status `analyzing`/`extracting` → `queued`/`running` | `jobs_status_chk` |
+| FTS | status `unresolved` → `planted`, `abandoned` 추가 | `foreshadowings_status_chk` |
+| FTS | 챕터 역할·마커 `linked` → `hint` | `foreshadowing_chapters_role_chk` |
+| AIQ | scope `whole` → `project`/`chapter`/`selection`, `chapter_id` 추가. 스레드 제목 200자 | `qa_threads_scope_chk`, `qa_threads.title` |
+| SSM | 노드 제목 200자. **패키지가 200자로 자른다** | `structure_nodes.title` |
+| MSU | source_type `file` → `upload`, status에 `draft` 추가·`extraction_failed` → `failed`, `file_url` → `file_key` | `manuscripts_*_chk` |
+
+### F2. 명세는 유지하고 백엔드 DB에 칸을 추가해야 하는 것 (팀 결정: 기능 유지)
+
+| # | 명세 | 없는 칸 | 없으면 |
+| --- | --- | --- | --- |
+| F2-1 | SCDS 2.7·4.11 Conflict | `conflict_target`, `chapter`, `modified_content`, `resolved_at` | 충돌 대상 표시·수정 내용·해결 시각을 저장할 수 없다 (D3 확장) |
+| F2-2 | ASS 2.3 영향 관계 | `type`, `status`(예: "고인") | 4.6 PATCH로 받은 상태가 버려진다 |
+| F2-3 | RCV 2.2 관계 이력 | `event_id`, `event_deleted` | RCV-004 사건 연결을 저장할 수 없다 |
+| F2-4 | SCDS 2.1 Character | `status`(`alive`/`deceased`/`removed`) | RULE-04 판단 기준이 없다 (B8) |
+
+### F3. 이미 구현된 백엔드 코드의 버그 (백엔드 담당)
+
+| # | 문제 | 근거 |
+| --- | --- | --- |
+| F3-1 | 초대 수락 토큰이 초대 생성 응답에만 있고 알림에 없어 피초대자가 수락할 수 없다 | `teams/service.py`, `projects/service.py`, `notifications/schemas.py` |
+| F3-2 | 만료된 초대를 `expired`로 바꾸는 코드가 없어 계속 `pending`, 재초대 시 409 | `teams/service.py` |
+| F3-3 | 가입 시 이메일 중복(`users_email_lower_uq`)을 처리하지 않아 500 | `auth/service.py` |
+| F3-4 | DB 제약 위반(IntegrityError·DataError) 처리기가 없어 형식 없는 500 | `main.py` |
+| F3-5 | 복선이 걸린 챕터·원고 삭제 시 `ON DELETE RESTRICT`로 500 (FTS 구현 후 발생) | `0001_initial.py`, `manuscripts/service.py` |
+| F3-6 | 업로드 파일 크기 제한이 없고(명세 413 `FILE_TOO_LARGE`), 워커가 파일 전체를 메모리로 읽음 | `manuscripts/storage.py` |
+| F3-7 | 원고 추출 실패 사유를 조회할 API가 없음 | `jobs/service.py` |
+| F3-8 | 프로젝트 초대 권한이 owner만 (명세는 owner/editor) | `api/router.py` |
+
+### F4. 남은 불일치 (결정·작업 필요)
+
+- **챕터 번호**: 명세는 챕터를 정수 번호로 부르지만, DB `chapter_no`는 원고 안에서만 유일하다. 원고가 여러 개면 번호가 여러 챕터를 가리킨다. 번호를 복사해 둔 `relationship_histories.chapter_no`, `foreshadowings.*_chapter_no`는 챕터 번호를 바꿔도 갱신되지 않는다.
+- **억제 키**: 가치관 기반 충돌은 `rule_id`가 null이라 한 사건의 서로 다른 충돌이 같은 키로 합쳐진다(F1에서 명세를 DB 키로 맞췄지만 이 한계는 남음).
+- **캐릭터 확정 중복 값**: 사용자가 추가한 값·병합 대상 값의 중복은 `character_attributes` 유니크 인덱스에 걸린다(NLCD 출력 중복은 T32에서 해결). 백엔드 확정 로직에서 걸러야 한다.
+- **초안 직접 생성**: `character_drafts.source_text` NOT NULL인데 ASS 4.1 요청에 없다.
+- **프론트 연동 차이(명세 미수정)**: AUTH 3·4절이 옛 로그인 방식(로컬·네이버) 그대로, MSU 업로드 방식(presigned URL + `file/complete`)·챕터 경로(`/projects/{id}/chapters`), 작업 응답 키 `job_id`(명세 `analysis_id`), 재시도 전이(`failed → queued`) 없음, 알림 설정 구조(유형별 ↔ 전체+`muted_types`), 명세에 없는 에러 코드(`DUPLICATE_INVITATION`, `INVITATION_NOT_PENDING`, `NOT_FOUND`, `HTTP_ERROR`).
+- **백엔드 구현 현황**: 명세 엔드포인트 135개 중 약 44개(AUTH·TEAM·PRJ·NOTI 일부·MSU). ASS·NLCD·REX·SCDS·RCV·FTS·AIQ·SSM API와 작업 조회 API, AI 워커는 없다.

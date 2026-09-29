@@ -20,7 +20,7 @@ from prolog_ai.core.guard import expect_list_of, expect_text, expect_type, publi
 from prolog_ai.core.runner import run_module
 from prolog_ai.modules.ssm.chunking import split_into_chapters
 from prolog_ai.modules.ssm.prompt import build_prompt
-from prolog_ai.modules.ssm.schema import SSMChunkOutput
+from prolog_ai.modules.ssm.schema import TITLE_MAX_LENGTH, SSMChunkOutput
 
 # TODO: 실제 "분량 부족" 기준(문자 수 등)이 명세에 없어, 완전히 비어 있는 경우만 최소로 막는다.
 MIN_MANUSCRIPT_LENGTH = 1
@@ -85,7 +85,14 @@ def run_ssm(
             new_id = f"node_{len(nodes) + 1}"
             new_ids.setdefault(node["node_id"], new_id)
             character_ids = [cid for cid in dict.fromkeys(node["character_ids"]) if cid in known_ids]
-            nodes.append({**node, "node_id": new_id, "character_ids": character_ids})
+            nodes.append(
+                {
+                    **node,
+                    "node_id": new_id,
+                    "title": node["title"].strip()[:TITLE_MAX_LENGTH],
+                    "character_ids": character_ids,
+                }
+            )
 
         for edge in result["data"]["edges"]:
             from_id = new_ids.get(edge["from_node_id"])

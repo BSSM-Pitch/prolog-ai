@@ -141,7 +141,7 @@ def test_run_scds_no_matching_keyword_is_no_candidate():
     event = {"character_ids": ["char_001"], "content": "평화롭게 대화를 나눴다"}
     world_rules = [{"rule_id": "RULE-02", "description": "폭력 회피", "violation_keywords": ["잔혹하게 살해"]}]
     result = run_scds(event, world_rules)
-    assert result["data"]["status"] == "no_candidate"
+    assert result["data"]["status"] == "skipped"
 
 
 def test_run_scds_matching_keyword_calls_llm_and_returns_schema_shaped_response():
@@ -202,7 +202,7 @@ def test_run_scds_only_passes_characters_in_event(llm_calls):
 def test_run_scds_character_settings_count_as_reference_data():
     result = run_scds(VIOLENT_EVENT, world_rules=[], characters=[PETER])
     # 캐릭터 설정이 있으면 "참조 데이터 없음"이 아니다. RULE-01 판정은 미구현이라 후보는 없다.
-    assert result["data"]["status"] == "no_candidate"
+    assert result["data"]["status"] == "skipped"
 
 
 def test_run_scds_characters_without_settings_still_skipped():
@@ -254,7 +254,7 @@ def test_run_scds_all_outcomes_share_status_and_rule_result():
     skipped = run_scds(VIOLENT_EVENT, [])
     no_candidate = run_scds({**VIOLENT_EVENT, "content": "평화"}, WORLD_RULES)
     completed = run_scds(VIOLENT_EVENT, WORLD_RULES)
-    for result, status in [(skipped, "skipped"), (no_candidate, "no_candidate"), (completed, "completed")]:
+    for result, status in [(skipped, "skipped"), (no_candidate, "skipped"), (completed, "completed")]:
         assert result["data"]["status"] == status
         assert "rule_result" in result["data"]
 
@@ -400,7 +400,7 @@ def test_run_scds_rules_candidate_is_queued_without_calling_llm(llm_calls):
     "event, world_rules, status",
     [
         (SPLIT_EVENT, [], "skipped"),
-        ({"character_ids": ["char_001"], "content": "평화롭게 대화함"}, SPLIT_RULES, "no_candidate"),
+        ({"character_ids": ["char_001"], "content": "평화롭게 대화함"}, SPLIT_RULES, "skipped"),
     ],
 )
 def test_run_scds_rules_without_candidate(llm_calls, event, world_rules, status):
@@ -435,7 +435,7 @@ def test_run_scds_rules_then_analysis_matches_run_scds(llm_calls):
     "rule_result, status",
     [
         ({"has_candidate": False, "skipped": True, "skipped_reason": "NO_REFERENCE_DATA", "candidates": []}, "skipped"),
-        ({"has_candidate": False, "skipped": False, "skipped_reason": None, "candidates": []}, "no_candidate"),
+        ({"has_candidate": False, "skipped": False, "skipped_reason": None, "candidates": []}, "skipped"),
     ],
 )
 def test_run_scds_analysis_without_candidate_does_not_call_llm(llm_calls, rule_result, status):
@@ -492,18 +492,25 @@ def test_run_rex_cleans_keywords_and_overwrites_source_chapter(llm_calls):
         {
             "extracted_rules": [
                 {
+                    "title": "  계약 마법  ",
                     "description": "마법은 계약 없이 발현될 수 없다",
                     "violation_keywords": [" 계약 없이 ", "", "  ", "계약 없이"],
                     "evidence": "계약 없이는",
                     "source_chapter": 7,
                 },
-                {"description": "  ", "violation_keywords": ["x"], "evidence": "계약 없이는"},
+                {
+                    "title": "t",
+                    "description": "  ",
+                    "violation_keywords": ["x"],
+                    "evidence": "계약 없이는",
+                },
             ]
         }
     ]
     result = run_rex("마법은 계약 없이는 쓸 수 없다.")
     assert result["data"]["extracted_rules"] == [
         {
+            "title": "계약 마법",
             "description": "마법은 계약 없이 발현될 수 없다",
             "violation_keywords": ["계약 없이"],
             "evidence": "계약 없이는",
@@ -557,3 +564,26 @@ def test_run_ssm_failure_reports_chunk_index(llm_calls):
     llm_calls["responses"] = [_build_fake_instance, LLMFailedError("boom")]
     result = run_ssm("1장 시작\n내용1\n2장 전개\n내용2")
     assert result["error"]["details"] == {"chunk_index": 1, "chunk_count": 2}
+
+
+def test_run_rex_title_fits_db_and_falls_back_to_description(llm_calls):
+    rule = {"violation_keywords": [], "evidence": "계약 없이는"}
+    llm_calls["responses"] = [
+        {
+            "extracted_rules": [
+                {**rule, "title": "가" * 300, "description": "설명"},
+                {**rule, "title": "   ", "description": "마법은 계약 없이 발현될 수 없다"},
+            ]
+        }
+    ]
+    rules = run_rex("마법은 계약 없이는 쓸 수 없다.")["data"]["extracted_rules"]
+    assert rules[0]["title"] == "가" * 200
+    assert rules[1]["title"] == "마법은 계약 없이 발현될 수 없다"
+
+
+def test_run_ssm_node_title_fits_db(llm_calls):
+    chunk = _chunk(["node_1"], [])
+    chunk["nodes"][0]["title"] = "나" * 250
+    llm_calls["responses"] = [chunk]
+    result = run_ssm("단일 원고")
+    assert result["data"]["nodes"][0]["title"] == "나" * 200

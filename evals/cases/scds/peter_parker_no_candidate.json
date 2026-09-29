@@ -23,5 +23,5 @@
       }
     ]
   },
-  "expected_status": "no_candidate"
+  "expected_status": "skipped"
 }

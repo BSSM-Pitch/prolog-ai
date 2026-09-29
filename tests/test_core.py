@@ -88,14 +88,14 @@ def test_module_ai_errors_cover_all_modules():
 @pytest.mark.parametrize(
     "enum_cls, values",
     [
-        (NLCDStatus, {"analyzing", "completed", "failed"}),
-        (REXStatus, {"queued", "extracting", "completed", "failed"}),
+        (NLCDStatus, {"queued", "running", "completed", "failed"}),
+        (REXStatus, {"queued", "running", "completed", "failed"}),
         (AIQMessageStatus, {"pending", "completed", "failed"}),
         (
             SCDSCheckStatus,
-            {"skipped", "no_candidate", "queued", "analyzing", "completed", "failed"},
+            {"skipped", "queued", "running", "completed", "failed"},
         ),
-        (SSMStatus, {"queued", "analyzing", "completed", "failed"}),
+        (SSMStatus, {"queued", "running", "completed", "failed"}),
     ],
 )
 def test_module_status_values_match_spec(enum_cls, values):
