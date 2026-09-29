@@ -7,7 +7,7 @@
 - 공개 함수(`run_nlcd`, `run_rex`, `run_aiq`, `run_scds`, `run_scds_rules`, `run_scds_analysis`, `run_ssm`)의 인터페이스와 응답 형식은 고정됐다.
 - 어떤 입력·AI 오류에도 예외를 던지지 않고 `{"data", "meta"}` 또는 `{"error": {"code", "message", "details"}}`로 반환한다. 공개 함수 × 예외 케이스를 `tests/test_guardrails_modules.py`에서 확인한다.
 - 실제 LLM 호출 경로(OpenRouter → DeepSeek)는 가짜 클라이언트 테스트(`tests/test_llm_real_path.py`)와 실제 API 호출(2026-09-29, 8번)로 확인했다. 다섯 모듈 모두 정해진 형식으로 응답한다. 결과는 `WARN.md` "실제 호출 결과".
-- 프롬프트는 한두 줄짜리 자리표시 수준이라 결과 품질이 명세 예시에 못 미친다(`WARN.md` T21).
+- NLCD·REX 프롬프트는 명세 기준을 옮겨 결과가 명세 예시에 가까워졌다. AIQ·SCDS·SSM 프롬프트는 아직 한두 줄짜리 자리표시 수준이다(`WARN.md` T21).
 
 ## 연동 체크리스트
 
@@ -27,7 +27,7 @@
 | SSM | 챕터는 "제N장/N장" 줄로만 나눈다. "1화" 형식은 원고 전체가 한 번에 분석되고, 본문 속 "3장의 …"를 경계로 오인할 수 있다 | T5, A10 |
 | SSM | 챕터별 결과를 이어붙이므로 노드의 `chapter` 번호와 `acts`가 전체 원고 기준이 아니다 | T6 |
 | REX·SSM | 입력 길이 상한이 없다. 긴 원고는 출력 한도(4096 토큰)에 걸려 `AI_*_FAILED`가 날 수 있다 | T9 |
-| 공통 | 프롬프트 인젝션 방어(시스템 프롬프트, 입력 구분자)가 없다 | T16 |
+| AIQ·SCDS·SSM | 프롬프트 인젝션 방어(입력 구분자)가 없다. NLCD·REX는 입력을 태그로 감쌌다 | T16 |
 
 ## 백엔드 팀에 확인이 필요한 것
 
