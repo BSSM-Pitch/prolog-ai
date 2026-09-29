@@ -86,7 +86,7 @@ Authorization: Bearer {access_token}
 | `project_id` | string | Y | 소속 프로젝트 ID |
 | `source_text` | string | Y | 창작자가 입력한 자연어 서술 텍스트 |
 | `target_character_id` | string | null | N | 기존 캐릭터에 추가 입력하는 경우의 대상 (NLCD-006) |
-| `status` | string | Y | `analyzing` | `completed` | `failed` |
+| `status` | string | Y | `queued` | `running` | `completed` | `failed` (DB `ops.jobs.status`) |
 | `personality_tags` | `ExtractedItem[]` | N | 성격 태그 (완료 시) |
 | `core_values` | `ExtractedItem[]` | N | 핵심 가지 (완료 시) |
 | `influence_relations` | `ExtractedInfluenceItem[]` | N | 영향 관계 (완료 시) |
@@ -148,7 +148,7 @@ Authorization: Bearer {access_token}
 {
   "data": {
     "extraction_id": "extract_0212",
-    "status": "analyzing",
+    "status": "queued",
     "source_text": "피터 파커는 책임감이 강하지만 자신감이 부족한 고등학생이다. 벤 삼촌의 영향을 크게 받았으매 폭력을 싫어한다.",
     "target_character_id": null,
     "duplicate_of": null
@@ -160,7 +160,7 @@ Authorization: Bearer {access_token}
 
 ```json
 {
-  "data": { "extraction_id": "extract_0213", "status": "analyzing", "duplicate_of": "extract_0212" },
+  "data": { "extraction_id": "extract_0213", "status": "queued", "duplicate_of": "extract_0212" },
   "meta": { "notice": "이전에 유사한 문장을 입력한 기록이 있습니다. 추출이 완료되면 병합 여부를 확인해 주세요." }
 }
 ```
@@ -171,12 +171,12 @@ Authorization: Bearer {access_token}
 
 `GET /projects/{projectId}/nl-extractions/{extractionId}`
 
-클라이언트는 `status: "analyzing"`인 동안 이 API를 폴링한다.
+클라이언트는 `status`가 `queued`·`running`인 동안 이 API를 폴링한다.
 
 **Response 200 — 분석 중**
 
 ```json
-{ "data": { "extraction_id": "extract_0212", "status": "analyzing" } }
+{ "data": { "extraction_id": "extract_0212", "status": "running" } }
 ```
 
 **Response 200 — 완료 (NLCD-004 복셈 표시용)**
@@ -235,7 +235,7 @@ Authorization: Bearer {access_token}
 
 `POST /projects/{projectId}/nl-extractions/{extractionId}/retry`
 
-**Response 202**: `{ "data": { "extraction_id": "extract_0212", "status": "analyzing" } }` · **Response 409**: 서버는 `completed` 상태에 대한 재시도를 `EXTRACTION_NOT_READY`로 거믷한다. 클라이언트는 `failed` 상태에서만 호출하도록 한다.
+**Response 202**: `{ "data": { "extraction_id": "extract_0212", "status": "queued" } }` · **Response 409**: 서버는 `completed` 상태에 대한 재시도를 `EXTRACTION_NOT_READY`로 거믷한다. 클라이언트는 `failed` 상태에서만 호출하도록 한다.
 
 ### 4.4 추출 이력 목록 조회
 
@@ -248,7 +248,7 @@ Authorization: Bearer {access_token}
 | 이름 | 타입 | 필수 | 설명 |
 | --- | --- | --- | --- |
 | `target_character_id` | string | N | 특정 캐릭터에 대한 추출 이력만 필터링 |
-| `status` | string | N | `analyzing` | `completed` | `failed` |
+| `status` | string | N | `queued` | `running` | `completed` | `failed` |
 | `limit`, `cursor` | - | N | 페이지네이션 |
 
 **Response 200**: `NLExtraction[]` (요약 필드만 포함, 상세는 4.2로 조회)
@@ -274,7 +274,7 @@ Authorization: Bearer {access_token}
 **Response 409 — 아직 완료되지 않은 추출 (`status != "completed"`)**
 
 ```json
-{ "error": { "code": "EXTRACTION_NOT_READY", "message": "추출이 아직 완료되지 않았습니다.", "details": { "status": "analyzing" } } }
+{ "error": { "code": "EXTRACTION_NOT_READY", "message": "추출이 아직 완료되지 않았습니다.", "details": { "status": "running" } } }
 ```
 
 **Response 409 — 이미 전달된 추출 결과 재전달 시도**
@@ -303,7 +303,7 @@ Authorization: Bearer {access_token}
 [사용자] 자연어 문장 입력
       │
       ▼
-[클라이언트] POST /nl-extractions → status: analyzing
+[클라이언트] POST /nl-extractions → status: queued
       │
       ▼
 [클라이언트] GET /nl-extractions/{id} 폴링
@@ -337,7 +337,7 @@ Authorization: Bearer {access_token}
 { "source_text": "피터 파커는 책임감이 강하지만 자신감이 부족한 고등학생이다. 벤 삼촌의 영향을 크게 받았으매 폭력을 싫어한다." }
 ```
 
-→ `extraction_id: extract_0212`, `status: "analyzing"`
+→ `extraction_id: extract_0212`, `status: "queued"`
 
 1. **결과 폴링** `GET /projects/proj_1/nl-extractions/extract_0212` → `status: "completed"`, 성격 태그·핵심 가치·영향 관계·감정 키워드 각 항목과 근거 구절 반환
 2. **복셈 확인 후 구조화 시스템으로 전달** `POST /projects/proj_1/nl-extractions/extract_0212/forward` → `forwarded_draft_id: draft_0212`

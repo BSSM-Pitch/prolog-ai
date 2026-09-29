@@ -84,7 +84,7 @@ Authorization: Bearer {access_token}
 | `setup_chapter`        | integer         | Y    | 복선이 처음 설치된 챕터                      |
 | `linked_chapters`      | integer[]       | N    | 복선이 언급·강화된 중간 챕터 목록 (오름차순) |
 | `payoff_chapter`       | integer         | null | N                                            | 복선이 회수된 챕터 (미회수 시 `null`) |
-| `status`               | string          | Y    | `resolved`(회수)                             | `unresolved`(미회수)                  |
+| `status`               | string          | Y    | `planted`(미회수) | `resolved`(회수) | `abandoned`(회수 포기) — DB `foreshadowings_status_chk`. `abandoned`로 바꾸는 흐름은 명세에 없음 |
 | `linked_event_ids`     | string[]        | N    | 연결된 사건 ID 목록 (FTS-008)                |
 | `linked_character_ids` | string[]        | N    | 연결된 캐릭터 ID 목록 (FTS-008)              |
 | `created_at`           | string(ISO8601) | Y    | 생성 시각                                    |
@@ -115,9 +115,9 @@ Authorization: Bearer {access_token}
 | ------------------ | -------- | ------------------------------------------------------------------- | ------------ | -------- |
 | `foreshadowing_id` | string   | 복선 ID                                                             |
 | `title`            | string   | 복선 제목                                                           |
-| `status`           | string   | `resolved`                                                          | `unresolved` |
-| `markers`          | object[] | `[{chapter, type}]` — `type`: `setup`                               | `linked`     | `payoff` |
-| `is_open`          | boolean  | 회수 지점이 없는 "열린 트랙" 여부 (`status=unresolved`일 때 `true`) |
+| `status`           | string   | `planted` | `resolved` | `abandoned` |
+| `markers`          | object[] | `[{chapter, type}]` — `type`: `setup` | `hint`(연결 챕터) | `payoff` (DB `foreshadowing_chapters.role`) |
+| `is_open`          | boolean  | 회수 지점이 없는 "열린 트랙" 여부 (`status=planted`일 때 `true`) |
 
 ---
 
@@ -153,7 +153,7 @@ Authorization: Bearer {access_token}
 
 | 이름                         | 타입    | 필수 | 설명                                |
 | ---------------------------- | ------- | ---- | ----------------------------------- | ------------ |
-| `status`                     | string  | N    | `resolved`                          | `unresolved` |
+| `status`                     | string  | N    | `planted` | `resolved` | `abandoned` |
 | `chapter_from`, `chapter_to` | integer | N    | 설치~회수 범위가 겹치는 복선 필터링 |
 | `linked_character_id`        | string  | N    | 특정 캐릭터와 연결된 복선만 필터링  |
 | `linked_event_id`            | string  | N    | 특정 사건과 연결된 복선만 필터링    |
@@ -206,7 +206,7 @@ Authorization: Bearer {access_token}
     "setup_chapter": 8,
     "linked_chapters": [],
     "payoff_chapter": null,
-    "status": "unresolved",
+    "status": "planted",
     "linked_event_ids": ["evt_040"],
     "linked_character_ids": ["char_003"]
   },
@@ -298,7 +298,7 @@ Authorization: Bearer {access_token}
 
 `DELETE /projects/{projectId}/foreshadowings/{foreshadowingId}/payoff`
 
-회수 챕터를 해제하고 상태를 `unresolved`로 되돌린다(12항 "회수 후 회수 챕터 삭제" 예외처리).
+회수 챕터를 해제하고 상태를 `planted`로 되돌린다(12항 "회수 후 회수 챕터 삭제" 예외처리).
 
 **Response 200**
 
@@ -307,7 +307,7 @@ Authorization: Bearer {access_token}
   "data": {
     "foreshadowing_id": "fs_001",
     "payoff_chapter": null,
-    "status": "unresolved"
+    "status": "planted"
   }
 }
 ```
@@ -392,8 +392,8 @@ AI 디렉터 패널에 표시할 조언 형태 안내 문장을 생성한다(FTS
       "status": "resolved",
       "markers": [
         { "chapter": 1, "type": "setup" },
-        { "chapter": 12, "type": "linked" },
-        { "chapter": 24, "type": "linked" },
+        { "chapter": 12, "type": "hint" },
+        { "chapter": 24, "type": "hint" },
         { "chapter": 40, "type": "payoff" }
       ],
       "is_open": false
@@ -401,7 +401,7 @@ AI 디렉터 패널에 표시할 조언 형태 안내 문장을 생성한다(FTS
     {
       "foreshadowing_id": "fs_007",
       "title": "사라진 편지",
-      "status": "unresolved",
+      "status": "planted",
       "markers": [{ "chapter": 8, "type": "setup" }],
       "is_open": true
     }
@@ -443,12 +443,12 @@ AI 디렉터 패널에 표시할 조언 형태 안내 문장을 생성한다(FTS
 {
   "data": [
     { "foreshadowing_id": "fs_007", "title": "사라진 편지", "role": "setup" },
-    { "foreshadowing_id": "fs_001", "title": "낡은 회중시계", "role": "linked" }
+    { "foreshadowing_id": "fs_001", "title": "낡은 회중시계", "role": "hint" }
   ]
 }
 ```
 
-`role` 값: `setup` | `linked` | `payoff`
+`role` 값: `setup` | `hint`(연결 챕터) | `payoff` (DB `foreshadowing_chapters_role_chk`)
 
 **연계 동작**: `role: "setup"`인 항목이 있으면 챕터 삭제 API는 사용자에게 해당 복선의 설치 챕터 재지정을 요청하도록 안내한다(자동 삭제/재지정하지 않음).
 
@@ -460,14 +460,14 @@ AI 디렉터 패널에 표시할 조언 형태 안내 문장을 생성한다(FTS
 | -------------------------------- | --------------- | ------------------------------------------------------------------------------------------------------------ |
 | 1단계: 복선 생성·설치 챕터 지정  | 사용자          | `POST /foreshadowings`                                                                                       |
 | 2단계: 연결 챕터 추가            | 사용자          | `POST /foreshadowings/{id}/linked-chapters`                                                                  |
-| 3단계: 미회수 상태 저장·추적     | 시스템          | 생성 시 `status: "unresolved"`로 초기화                                                                      |
+| 3단계: 미회수 상태 저장·추적     | 시스템          | 생성 시 `status: "planted"`로 초기화                                                                      |
 | 4단계: 회수 챕터 기록·상태 변경  | 사용자          | `PUT /foreshadowings/{id}/payoff`                                                                            |
 | 5단계: 미회수 목록·타임라인 안내 | 시스템 → 사용자 | `GET /foreshadowings/unresolved`, `GET /foreshadowings/unresolved/advisories`, `GET /foreshadowing-timeline` |
 
 **시퀀스 요약**
 
 ```
-[사용자] POST /foreshadowings (설치 챕터 지정) → status: unresolved
+[사용자] POST /foreshadowings (설치 챕터 지정) → status: planted
       │
       ▼
 [사용자] POST /foreshadowings/{id}/linked-chapters (필요 시 반복 추가)
@@ -494,7 +494,7 @@ AI 디렉터 패널에 표시할 조언 형태 안내 문장을 생성한다(FTS
 { "title": "사라진 편지", "setup_chapter": 8, "linked_event_ids": ["evt_040"] }
 ```
 
-→ `foreshadowing_id: fs_007`, `status: "unresolved"`
+→ `foreshadowing_id: fs_007`, `status: "planted"`
 
 1. **35챕터 시점, 미회수 목록 확인** `GET /projects/proj_1/foreshadowings/unresolved?current_chapter=35` → `fs_007` 포함, `elapsed_chapters: 27`
 2. **AI 디렉터 패널 안내 메시지 조회** `GET /projects/proj_1/foreshadowings/unresolved/advisories?current_chapter=35` → "8화에 설치한 '사라진 편지' 복선이 아직 회수되지 않았습니다. 현재 챕터 흐름에서 다시 언급하거나 회수를 고려할 수 있습니다."

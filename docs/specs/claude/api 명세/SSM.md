@@ -57,7 +57,7 @@ Authorization: Bearer {access_token}
 | --- | --- | --- | --- |
 | `analysis_id` | string | Y | 분석 작업 고유 ID |
 | `manuscript_id` | string | Y | 대상 원고 ID |
-| `status` | string | Y | `queued` | `analyzing` | `completed` | `failed` |
+| `status` | string | Y | `queued` | `running` | `completed` | `failed` (DB `ops.jobs.status`) |
 | `created_at` | string(ISO8601) | Y | 생성 시각 |
 
 ### 2.2 StructureMap (확정 구조 지도)
@@ -78,7 +78,7 @@ Authorization: Bearer {access_token}
 | `node_id` | string | Y | 노드 고유 ID |
 | `type` | string | Y | `event`(사건) | `turning_point`(전환점) | `climax`(절정) |
 | `chapter` | integer | Y | 발생 챕터 |
-| `title` | string | Y | 사건 제목 |
+| `title` | string | Y | 사건 제목, 최대 200자 (DB `structure_nodes.title varchar(200)`) |
 | `summary` | string | Y | 요약 |
 | `character_ids` | string[] | N | 관련 캐릭터 ID (ASS/SCDS 캐릭터 참조) |
 
@@ -111,7 +111,7 @@ Authorization: Bearer {access_token}
 
 **Response 200 — 완료**: `{ "data": { "analysis_id": "ssm_801", "status": "completed", "structure_map_ref": "/projects/proj_1/manuscripts/ms_301/structure-map" } }`
 
-**Response 200 — 진행 중**: `status: "analyzing"` · **Response 200 — 실패**: `status: "failed"`, `error.code: "AI_ANALYSIS_FAILED"`
+**Response 200 — 진행 중**: `status: "running"` · **Response 200 — 실패**: `status: "failed"`, `error.code: "AI_ANALYSIS_FAILED"`
 
 ### 4.3 분석 재시도
 

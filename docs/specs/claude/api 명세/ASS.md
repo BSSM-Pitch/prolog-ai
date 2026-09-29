@@ -93,7 +93,7 @@ Authorization: Bearer {access_token}
 | `core_values`            | `DraftItem[]`          | N    | 핵심 가치 목록                   |
 | `influence_relations`    | `DraftInfluenceItem[]` | N    | 영향 관계 목록                   |
 | `emotion_keywords`       | `DraftItem[]`          | N    | 감정 키워드 목록                 |
-| `status`                 | string                 | Y    | `pending_review`                 | `confirmed`                                        | `discarded` |
+| `status`                 | string                 | Y    | `pending`                        | `confirmed`                                        | `discarded` (DB `character_drafts_status_chk`) |
 | `source_session_id`      | string                 | null | N                                | 자연어 입력 기반 캐릭터 설간 기능의 원본 세션 참조 |
 | `confirmed_character_id` | string                 | null | N                                | 확정 후 생성/병합된 캐릭터 ID                      |
 | `created_at`             | string(ISO8601)        | Y    | 수신 시각                        |
@@ -103,7 +103,7 @@ Authorization: Bearer {access_token}
 | 필드      | 타입   | 필수 | 설명               |
 | --------- | ------ | ---- | ------------------ | --------------------------- | ------------------ |
 | `item_id` | string | Y    | 항목 고유 ID       |
-| `field`   | string | Y    | `personality_tags` | `core_values`               | `emotion_keywords` |
+| `field`   | string | Y    | `personality_tag` | `core_value`               | `emotion_keyword` (DB `character_draft_items.category` 값. 목록 필드명은 복수형 그대로) |
 | `value`   | string | Y    | 항목 값            |
 | `origin`  | string | Y    | `ai_extracted`     | `user_added` (EDIT-03 대응) |
 
@@ -112,7 +112,7 @@ Authorization: Bearer {access_token}
 | 필드      | 타입   | 필수 | 설명                         |
 | --------- | ------ | ---- | ---------------------------- | ----------------------------- |
 | `item_id` | string | Y    | 항목 고유 ID                 |
-| `field`   | string | Y    | 고정값 `influence_relations` |
+| `field`   | string | Y    | 고정값 `influence_relation` |
 | `target`  | string | Y    | 영향을 준 대상 이름          |
 | `type`    | string | N    | 관계 유형 (예: "영향")       |
 | `status`  | string | null | N                            | 대상의 현재 상태 (예: "고인") |
@@ -129,18 +129,22 @@ Authorization: Bearer {access_token}
 | `core_values`         | string[]        | N    | 핵심 가지                  |
 | `influence_relations` | object[]        | N    | `[{target, type, status}]` |
 | `emotion_keywords`    | string[]        | N    | 감정 키워드                |
-| `status`              | string          | Y    | 고정값 `confirmed`         |
+| `status`              | string          | Y    | `active` \| `archived` (DB `characters_status_chk`. 확정 직후는 `active`) |
 | `confirmed_at`        | string(ISO8601) | Y    | 확정 시각                  |
 | `updated_at`          | string(ISO8601) | Y    | 마지막 수정 시각           |
 
 ### 2.5 EditHistoryEntry (편집 이력 항목)
 
-| 필드     | 타입            | 필수 | 설명           |
-| -------- | --------------- | ---- | -------------- | ---------- | --------- |
-| `action` | string          | Y    | `added`        | `modified` | `removed` |
-| `field`  | string          | Y    | 대상 필드명    |
-| `value`  | string          | Y    | 바뀌 내용 요약 |
-| `at`     | string(ISO8601) | Y    | 변경 시각      |
+DB `authoring.character_edit_histories` 구조를 따른다.
+
+| 필드           | 타입            | 필수 | 설명                                             |
+| -------------- | --------------- | ---- | ------------------------------------------------ |
+| `phase`        | string          | Y    | `draft`(확정 전) \| `confirmed`(확정 후)        |
+| `action`       | string          | Y    | `create` \| `update` \| `delete`               |
+| `field`        | string          | Y    | 대상 필드명 (예: `core_value`, `character_name`) |
+| `before_value` | string \| null  | N    | 바뀌기 전 값 (`create`면 null)                   |
+| `after_value`  | string \| null  | N    | 바뀐 뒤 값 (`delete`면 null)                     |
+| `created_at`   | string(ISO8601) | Y    | 변경 시각                                        |
 
 ---
 
@@ -196,13 +200,13 @@ Authorization: Bearer {access_token}
     "personality_tags": [
       {
         "item_id": "itm_1",
-        "field": "personality_tags",
+        "field": "personality_tag",
         "value": "책임감 강함",
         "origin": "ai_extracted"
       },
       {
         "item_id": "itm_2",
-        "field": "personality_tags",
+        "field": "personality_tag",
         "value": "자신감 부족",
         "origin": "ai_extracted"
       }
@@ -210,7 +214,7 @@ Authorization: Bearer {access_token}
     "core_values": [
       {
         "item_id": "itm_3",
-        "field": "core_values",
+        "field": "core_value",
         "value": "폭력 회피",
         "origin": "ai_extracted"
       }
@@ -218,7 +222,7 @@ Authorization: Bearer {access_token}
     "influence_relations": [
       {
         "item_id": "itm_4",
-        "field": "influence_relations",
+        "field": "influence_relation",
         "target": "벤 삼촌",
         "type": "영향",
         "status": null,
@@ -228,12 +232,12 @@ Authorization: Bearer {access_token}
     "emotion_keywords": [
       {
         "item_id": "itm_5",
-        "field": "emotion_keywords",
+        "field": "emotion_keyword",
         "value": "불안",
         "origin": "ai_extracted"
       }
     ],
-    "status": "pending_review",
+    "status": "pending",
     "source_session_id": "nlsession_882",
     "confirmed_character_id": null
   }
@@ -246,7 +250,7 @@ Authorization: Bearer {access_token}
 
 `GET /projects/{projectId}/character-drafts`
 
-**Query Parameters**: `status` (`pending_review`|`confirmed`|`discarded`), `limit`, `cursor`
+**Query Parameters**: `status` (`pending`|`confirmed`|`discarded`), `limit`, `cursor`
 
 **Response 200**: `CharacterDraft[]`
 
@@ -268,7 +272,7 @@ Authorization: Bearer {access_token}
 { "character_name": "피터 B. 파커" }
 ```
 
-**Response 200**: 수정된 `CharacterDraft` 객체 · **Response 409**: `status`가 `confirmed`/`discarded`인 경우 `DRAFT_ALREADY_RESOLVED` · **비고**: 이 호출은 편집 이력에 `{action: "modified", field: "character_name", ...}`로 기록된다(ASS-008).
+**Response 200**: 수정된 `CharacterDraft` 객체 · **Response 409**: `status`가 `confirmed`/`discarded`인 경우 `DRAFT_ALREADY_RESOLVED` · **비고**: 이 호출은 편집 이력에 `{action: "update", field: "character_name", ...}`로 기록된다(ASS-008).
 
 ### 4.5 항목 추가
 
@@ -279,21 +283,21 @@ Authorization: Bearer {access_token}
 **Request Body — 일반 항목**
 
 ```json
-{ "field": "core_values", "value": "책임 중시" }
+{ "field": "core_value", "value": "책임 중시" }
 ```
 
 **Request Body — 영향 관계 항목**
 
 ```json
 {
-  "field": "influence_relations",
+  "field": "influence_relation",
   "target": "메이 숙모",
   "type": "영향",
   "status": null
 }
 ```
 
-**Response 201**: 생성된 항목 (`origin: "user_added"`) · **Response 409**: `DRAFT_ALREADY_RESOLVED`
+**Response 201**: 생성된 항목 (`origin: "user_added"`, 편집 이력에 `create`로 기록) · **Response 409**: `DRAFT_ALREADY_RESOLVED`
 
 ### 4.6 항목 수정
 
@@ -311,13 +315,13 @@ Authorization: Bearer {access_token}
 { "status": "고인" }
 ```
 
-**Response 200**: 수정된 항목 (편집 이력에 `modified`로 기록, EDIT-01) · **Response 404**: `ITEM_NOT_FOUND`
+**Response 200**: 수정된 항목 (편집 이력에 `update`로 기록, EDIT-01) · **Response 404**: `ITEM_NOT_FOUND`
 
 ### 4.7 항목 삭제
 
 `DELETE /projects/{projectId}/character-drafts/{draftId}/items/{itemId}`
 
-**Response 204** (편집 이력에 `removed`로 기록, EDIT-02) · **Response 404**: `ITEM_NOT_FOUND`
+**Response 204** (편집 이력에 `delete`로 기록, EDIT-02) · **Response 404**: `ITEM_NOT_FOUND`
 
 ### 4.8 항목 AI 재추천 요청 (선택 기능)
 
@@ -373,7 +377,7 @@ Authorization: Bearer {access_token}
       { "target": "벤 삼촌", "type": "영향", "status": "고인" }
     ],
     "emotion_keywords": ["불안"],
-    "status": "confirmed",
+    "status": "active",
     "confirmed_at": "2026-08-27T10:05:00Z"
   }
 }
@@ -397,7 +401,7 @@ Authorization: Bearer {access_token}
 {
   "error": {
     "code": "DUPLICATE_CHARACTER_CANDIDATE",
-    "message": "동일한 이름의 확정된 캐릭터가 이미 존재합니다. 병합할지, 새 캐릭터로 생성할지 선택해 주세요.",
+    "message": "동일한 이름의 확정된 캐릭터가 이미 존재합니다. 병합할지, 이름을 바꿔 새 캐릭터로 생성할지 선택해 주세요.",
     "details": { "candidate_character_id": "char_001" }
   }
 }
@@ -412,8 +416,10 @@ Authorization: Bearer {access_token}
 또는
 
 ```json
-{ "resolution": "create_new" }
+{ "resolution": "create_new", "character_name": "피터 B. 파커" }
 ```
+
+`create_new`는 **기존 캐릭터와 다른 이름**(`character_name`)을 함께 보내야 한다. DB가 한 프로젝트 안에서 같은 이름(대소문자 무시)의 활성 캐릭터를 하나만 허용하기 때문이다(`characters_project_name_active_uq`). 바꾼 이름도 겹치면 다시 409 `DUPLICATE_CHARACTER_CANDIDATE`를 반환한다.
 
 **Response 201/200**: `resolution`에 따라 병합된 `ConfirmedCharacter` 또는 신규 `ConfirmedCharacter` 반환
 
@@ -421,7 +427,7 @@ Authorization: Bearer {access_token}
 
 `POST /projects/{projectId}/character-drafts/{draftId}/discard`
 
-사용자가 편집을 마처지 앞엀거 폐기할 때 호출한다. 화장을 그대로 이탈하는 경우(EDIT-04)에는 이 API를 호출하지 않으매, 초안은 `pending_review` 상태로 그대로 보관된다.
+사용자가 편집을 마처지 앞엀거 폐기할 때 호출한다. 화장을 그대로 이탈하는 경우(EDIT-04)에는 이 API를 호출하지 않으매, 초안은 `pending` 상태로 그대로 보관된다.
 
 **Response 200**
 
@@ -441,16 +447,20 @@ Authorization: Bearer {access_token}
 {
   "data": [
     {
-      "action": "added",
-      "field": "core_values",
-      "value": "책임 중시",
-      "at": "2026-08-27T10:02:00Z"
+      "phase": "draft",
+      "action": "create",
+      "field": "core_value",
+      "before_value": null,
+      "after_value": "책임 중시",
+      "created_at": "2026-08-27T10:02:00Z"
     },
     {
-      "action": "modified",
-      "field": "influence_relations",
-      "value": "벤 삼촌(상태: 고인 추가)",
-      "at": "2026-08-27T10:03:00Z"
+      "phase": "draft",
+      "action": "update",
+      "field": "personality_tag",
+      "before_value": "책임감 강함",
+      "after_value": "책임감이 강함",
+      "created_at": "2026-08-27T10:03:00Z"
     }
   ]
 }
@@ -540,7 +550,7 @@ SCDS·RCV 등 다른 기능 모듈이 구조화 데이터를 조회하기 위해
 1. **사용자가 핵심 가치 항목 추가** `POST /projects/proj_1/character-drafts/draft_0212/items`
 
 ```json
-{ "field": "core_values", "value": "책임 중시" }
+{ "field": "core_value", "value": "책임 중시" }
 ```
 
 1. **영향 관계 항목에 상태 정보 추가 수정** `PATCH /projects/proj_1/character-drafts/draft_0212/items/itm_4`
@@ -550,7 +560,7 @@ SCDS·RCV 등 다른 기능 모듈이 구조화 데이터를 조회하기 위해
 ```
 
 1. **편집 이력 확인** `GET /projects/proj_1/character-drafts/draft_0212/edit-history` → 기능 명세서 9항 편집 이력 예시와 동일한 2건 반환
-2. **확정** `POST /projects/proj_1/character-drafts/draft_0212/confirm` → `character_id: char_001`, `status: "confirmed"`
+2. **확정** `POST /projects/proj_1/character-drafts/draft_0212/confirm` → `character_id: char_001`, `status: "active"`
 3. **SCDS가 확정 데이터를 참조** `GET /projects/proj_1/characters/char_001` → SCDS API 명세서의 `Character` 조회 시 참조하는 것과 동일한 캐릭터 레코드 (필드명 매핑 필요, 상단 정합성 안내 참고)
 
 ---
