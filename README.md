@@ -29,9 +29,9 @@ set -a; source .env; set +a
 
 | 이름 | 설명 |
 | --- | --- |
-| `OPENROUTER_API_KEY` | OpenRouter API 키 (`sk-or-v1-…`). LLM은 OpenRouter를 거쳐 DeepSeek 모델을 부른다 |
+| `OPENROUTER_API_KEY` | OpenRouter API 키 (`sk-or-v1-…`). LLM은 OpenRouter를 거쳐 DeepSeek 모델을 부른다. 비어 있으면 API를 부르지 않고 `AI_*_FAILED`로 반환한다(다른 키를 대신 보내지 않는다) |
 | `PROLOG_AI_MODEL` | 호출할 OpenRouter 모델 이름. 비우면 `deepseek/deepseek-v4-flash` |
-| `USE_FAKE_LLM` | 값이 정확히 `1`이면 API를 부르지 않고 스키마에 맞는 가짜 응답(빈 배열·빈 문자열)을 돌려준다. `true` 등 다른 값은 실제 호출로 처리된다 |
+| `USE_FAKE_LLM` | 개발·테스트 전용. 운영 환경에는 넣지 않는다. 값이 정확히 `1`이면 API를 부르지 않고 스키마에 맞는 가짜 응답(빈 배열·빈 문자열)을 돌려준다. `true` 등 다른 값은 실제 호출로 처리된다 |
 
 ## 공개 함수
 
@@ -42,13 +42,13 @@ set -a; source .env; set +a
 
 | 함수 | 입력 | 성공 시 `data` |
 | --- | --- | --- |
-| `run_nlcd(source_text)` | 캐릭터 서술 문장 | `personality_tags`, `core_values`, `emotion_keywords` (`[{value, evidence}]`), `influence_relations` (`[{value, type, evidence}]`) |
-| `run_rex(manuscript_text)` | 원고 본문 | `extracted_rules` (`[{description, violation_keywords, evidence, source_chapter}]`) |
-| `run_aiq(question, manuscript_text, scope="whole", selection_range=None, messages=None)` | 질문, 원고, `whole`/`selection`, `{start, end}` 문자 오프셋, 같은 스레드의 이전 메시지(후속 질문일 때, 시간순 `[{role, content}]`. `role`은 `user`/`assistant`. 그 밖의 필드는 무시. 답변이 없는 `pending`·`failed` 메시지는 빼고 넘긴다) | `content` (답변 문자열) |
+| `run_nlcd(source_text)` | 캐릭터 서술 문장 | `personality_tags`, `core_values`, `emotion_keywords` (`[{value, evidence}]`), `influence_relations` (`[{value, type, evidence}]`). 빈 `value`는 버리고, 같은 카테고리의 중복 값(앞뒤 공백 제거·대소문자 무시, 백엔드 `character_attributes` 유니크 인덱스 기준)은 처음 것만 남긴다 |
+| `run_rex(manuscript_text)` | 원고 본문 | `extracted_rules` (`[{description, violation_keywords, evidence, source_chapter}]`). `violation_keywords`는 AI 응답의 필수 필드이고 빈·중복 키워드는 버린다. `source_chapter`는 챕터 정보를 받지 않으므로 항상 `null` |
+| `run_aiq(question, manuscript_text, scope="project", selection_range=None, messages=None)` | 질문, 원고(빈 원고는 `INVALID_INPUT`), `project`/`chapter`/`selection`(백엔드 `qa_threads.scope` 값. `project`·`chapter`는 넘겨받은 본문 전체를 본다), `{start, end}` 문자 오프셋, 같은 스레드의 이전 메시지(후속 질문일 때, 시간순 `[{role, content}]`. `role`은 `user`/`assistant`. 그 밖의 필드는 무시. 답변이 없는 `pending`·`failed` 메시지는 빼고 넘긴다. **지금 묻는 질문은 `question`으로만 넘기고 `messages`에 넣지 않는다**) | `content` (답변 문자열) |
 | `run_scds_rules(event, world_rules, characters=None)` | 사건 `{character_ids, content}`, WorldRule 목록 `[{rule_id, description, violation_keywords}]`, ASS 확정 캐릭터 목록(선택) | 룰 검출만(LLM 호출 없음). `status`(`skipped`/`no_candidate`/`queued`), `rule_result` |
 | `run_scds_analysis(event, rule_result, characters=None)` | 사건, `run_scds_rules`가 준 `rule_result`(SCDS 2.6), ASS 확정 캐릭터 목록(선택) | AI 분석만. `status`(`completed`), `rule_result`, `conflicts` (`[{character_id, conflict_target, severity, advice}]`) |
 | `run_scds(event, world_rules, characters=None)` | `run_scds_rules`와 같음 | 룰 검출 + AI 분석을 한 번에. `status`, `rule_result`, 완료 시 `conflicts` |
-| `run_ssm(manuscript_text)` | 원고 본문 | `acts`, `nodes`, `edges` (SSM 명세 StructureMap 구조) |
+| `run_ssm(manuscript_text, characters=None)` | 원고 본문, ASS 확정 캐릭터 목록(선택, `[{character_id, name, ...}]`) | `acts`, `nodes`, `edges` (SSM 명세 StructureMap 구조). 노드 `character_ids`에는 `characters`에 있는 `character_id`만 남는다(백엔드 `structure_node_characters` 외래키). `characters`를 주지 않으면 빈 배열 |
 
 필드 정의는 각 모듈의 `schema.py`와 `docs/specs/claude/api 명세/`를 따른다.
 
@@ -84,8 +84,8 @@ set -a; source .env; set +a
 | 키 | 함수 | 의미 |
 | --- | --- | --- |
 | `removed_evidence_count` | NLCD, REX | 근거가 원문에 없어 제거한 항목 수 |
-| `removed_conflict_count` | SCDS | 없는 룰 후보 번호를 가리켜 제거한 충돌 수. AI는 후보 번호만 고르고, `character_id`·`conflict_target`은 패키지가 후보에서 채운다 |
-| `removed_edge_count` | SSM | 없는 노드를 가리켜 제거한 연결 수 |
+| `removed_conflict_count` | SCDS | 없는 룰 후보 번호나 이미 쓴 번호를 가리켜 제거한 충돌 수. AI는 후보 번호만 고르고, `character_id`·`conflict_target`은 패키지가 후보에서 채운다 |
+| `removed_edge_count` | SSM | 없는 노드·자기 자신을 가리키거나 이미 있는 연결과 같아 제거한 연결 수 |
 
 ### SCDS 응답
 
@@ -130,17 +130,25 @@ AI 분석이 실패해도 룰 후보는 `error.details.rule_result`에 남는다
 
 `characters`에는 ASS `ConfirmedCharacter`를 그대로 넘기면 된다. 사건의 `character_ids`에 있는 캐릭터만 아래 필드 매핑으로 바꿔 AI에 전달한다.
 
+룰 검출 세부:
+
+- 키워드는 연속 공백·줄바꿈 차이를 무시하고 찾는다("잔혹하게  살해"도 "잔혹하게 살해"로 찾음). 공백만 있는 키워드는 무시한다.
+- 같은 (캐릭터, 규칙)은 키워드가 여러 개 걸려도 후보 하나로 합친다(처음 걸린 키워드를 `matched_keyword`로 남김).
+- 후보 `rule_id`는 입력 WorldRule의 `rule_id` 그대로다. 백엔드 `insight.conflicts.rule_id`가 `world_rules` 외래키이므로 그대로 저장하면 된다.
+- 무시(`ignored`)한 충돌의 재감지 억제(SCDS 4.11)는 패키지가 하지 않는다. 백엔드 `insight.conflict_suppressions`(`suppression_key`)로 결과 후보를 거른다.
+- `run_scds_analysis`는 `rule_result` 후보의 캐릭터가 사건 `character_ids`에 없으면 `INVALID_INPUT`이다(다른 사건의 결과를 넘기는 실수 방지).
+
 ### 에러 코드
 
 | 코드 | HTTP | 발생 |
 | --- | --- | --- |
 | `INVALID_INPUT` | 400 | 입력이 비었거나 타입이 틀림, 인자 누락 (전 모듈) |
-| `INVALID_SELECTION_RANGE` | 400 | AIQ `scope=selection`인데 범위가 없거나 `0 ≤ start < end ≤ 원고 길이`를 벗어남 |
+| `INVALID_SELECTION_RANGE` | 400 | AIQ `scope=selection`인데 범위가 없거나 `0 ≤ start < end ≤ 원고 길이`를 벗어남 (`start`·`end`가 정수가 아니면 `INVALID_INPUT`) |
 | `MANUSCRIPT_TOO_SHORT` | 422 | SSM 원고가 비어 있음 |
 | `RULE_ENGINE_ERROR` | 500 | SCDS 룰 검출 등 AI 호출 밖에서 예상 못 한 오류 (`run_scds_rules`, `run_scds`) |
 | `AI_EXTRACTION_FAILED` / `AI_EXTRACTION_TIMEOUT` | 502 / 503 | NLCD, REX의 AI 실패 / 시간 초과 |
 | `AI_RESPONSE_FAILED` / `AI_RESPONSE_TIMEOUT` | 502 / 503 | AIQ의 AI 실패 / 시간 초과 |
-| `AI_ANALYSIS_FAILED` / `AI_ANALYSIS_TIMEOUT` | 502 / 503 | SCDS, SSM의 AI 실패 / 시간 초과 |
+| `AI_ANALYSIS_FAILED` / `AI_ANALYSIS_TIMEOUT` | 502 / 503 | SCDS, SSM의 AI 실패 / 시간 초과. SSM은 실패한 청크 위치를 `details.chunk_index`(0부터)·`details.chunk_count`에 남긴다 |
 
 AI 응답이 스키마와 맞지 않을 때도 모듈의 `AI_*_FAILED`(502)로 반환한다. 원인은 `details.internal_code: "SCHEMA_VALIDATION_FAILED"`와 `details.errors`로 구분한다(`WARN.md` A4 ①).
 
@@ -152,10 +160,14 @@ HTTP 상태는 `prolog_ai.core.errors.HTTP_STATUS`에도 있다. 반환되는 `e
 
 | 함수 결과 | 작업 상태 |
 | --- | --- |
-| `data`가 있음 | `completed` (SCDS는 `data.status` 값을 그대로 사용: `skipped` / `no_candidate` / `queued` / `completed`) |
-| `error`가 있음 | `failed`, `error`를 그대로 응답에 싣는다 |
+| `data`가 있음 | `completed`, `data`를 `result`에 싣는다 |
+| `error`가 있음 | `failed`, `error`를 그대로 `error`에 싣는다 |
 
-AI 호출 한 번의 시간 제한은 30초이고, 긴 글을 만드는 AIQ 답변과 SCDS 조언은 90초다. AI 재시도는 패키지 안에서 최대 2회 한다(시간 초과·연결 오류·429·5xx만. 인증 오류 등은 바로 실패). 사용자가 누르는 재시도 API는 같은 함수를 다시 호출하면 된다.
+백엔드 `ops.jobs.status`는 `queued/running/completed/failed/skipped`만 허용하므로(`jobs_status_chk`) SCDS `data.status`를 작업 상태에 그대로 넣지 않는다.
+SCDS 룰 검출(`run_scds_rules`)은 사건 저장 요청 안에서 동기로 부르고 작업을 만들지 않는다. `data.status`가 `queued`일 때만 AI 작업(`conflict_check`)을 만들고, 그 작업에서 `run_scds_analysis`를 부른다.
+`skipped`·`no_candidate`는 AI 작업이 필요 없는 결과이므로 작업을 만들지 않는다. 명세의 ConflictCheck `status` 값(`skipped`/`no_candidate`/`queued`/…)은 응답 직렬화 계층에서 `data.status`로 보여 준다.
+
+AI 호출 한 번의 시간 제한은 NLCD 30초, REX·AIQ·SCDS·SSM 90초다(SSM은 챕터마다 한 번씩). AI 재시도는 패키지 안에서 최대 2회 한다(시간 초과·연결 오류·408·409·429·5xx만. 인증 오류 등은 바로 실패). 408로 끝나면 `AI_*_TIMEOUT`이다. OpenRouter에는 도구 호출을 지원하는 제공사로만 보내도록 요청한다. 사용자가 누르는 재시도 API는 같은 함수를 다시 호출하면 된다.
 
 인수인계 요약과 알려진 한계는 `docs/handoff.md`, 미해결 문제는 `docs/specs/claude/WARN.md`에 있다.
 

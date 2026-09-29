@@ -84,6 +84,19 @@ def _validate_rule_result(rule_result: Any) -> None:
         )
 
 
+def _validate_rule_result_matches_event(rule_result: dict[str, Any], event: dict[str, Any]) -> None:
+    """후보의 캐릭터가 사건의 character_ids에 있어야 한다. 다른 사건의 rule_result를 넘기는 실수를 막는다."""
+    for index, candidate in enumerate(rule_result["candidates"]):
+        if candidate["character_id"] not in event["character_ids"]:
+            raise InputValidationError(
+                "rule_result 후보의 캐릭터가 사건의 character_ids에 없습니다.",
+                {
+                    "field": f"rule_result.candidates[{index}].character_id",
+                    "received": candidate["character_id"],
+                },
+            )
+
+
 def _character_settings(event: dict[str, Any], characters: list[dict[str, Any]]) -> list[dict]:
     """사건에 관련된 캐릭터만 골라 SCDS Character 필드로 바꾼다."""
     settings = []
@@ -104,17 +117,26 @@ def _character_settings(event: dict[str, Any], characters: list[dict[str, Any]])
 
 
 def _conflicts_from_candidates(conflicts: list[dict], candidates: list[dict]) -> list[dict]:
-    """AI가 고른 후보 번호로 SCDS 2.7 Conflict 필드를 채운다. 없는 번호를 가리키는 충돌은 버린다."""
-    return [
-        {
-            "character_id": candidates[c["candidate_index"]]["character_id"],
-            "conflict_target": candidates[c["candidate_index"]]["conflict_target"],
-            "severity": c["severity"],
-            "advice": c["advice"],
-        }
-        for c in conflicts
-        if 0 <= c["candidate_index"] < len(candidates)
-    ]
+    """AI가 고른 후보 번호로 SCDS 2.7 Conflict 필드를 채운다.
+
+    없는 번호를 가리키는 충돌과, 이미 나온 번호를 다시 가리키는 충돌(처음 것만 남김)은 버린다.
+    """
+    kept = []
+    used: set[int] = set()
+    for c in conflicts:
+        index = c["candidate_index"]
+        if not 0 <= index < len(candidates) or index in used:
+            continue
+        used.add(index)
+        kept.append(
+            {
+                "character_id": candidates[index]["character_id"],
+                "conflict_target": candidates[index]["conflict_target"],
+                "severity": c["severity"],
+                "advice": c["advice"],
+            }
+        )
+    return kept
 
 
 def _rule_status_response(rule_result: dict[str, Any]) -> dict[str, Any]:
@@ -187,6 +209,7 @@ def run_scds_analysis(
     _validate_event(event)
     _validate_rule_result(rule_result)
     _validate_characters(characters)
+    _validate_rule_result_matches_event(rule_result, event)
 
     if rule_result["skipped"] or not rule_result["has_candidate"]:
         return _rule_status_response(rule_result)

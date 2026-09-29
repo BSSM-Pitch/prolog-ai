@@ -14,9 +14,10 @@
 1. 설치: `pip install git+https://github.com/BSSM-Pitch/prolog-ai.git` (버전 태그는 아직 없음)
 2. 환경변수 `OPENROUTER_API_KEY`(필수), `PROLOG_AI_MODEL`(선택, 기본 `deepseek/deepseek-v4-flash`)을 서버 환경에 넣는다. 운영 환경에는 `USE_FAKE_LLM`을 넣지 않는다. 서버에서 `openrouter.ai`로 나가는 외부 연결이 필요하다. 패키지는 `.env`를 읽지 않는다.
 3. 개발·테스트 환경에서는 `USE_FAKE_LLM=1`로 API 없이 돌릴 수 있다.
-4. 함수는 동기이고 한 번에 수십 초 걸릴 수 있다. 호출 한 번의 제한은 30초(AIQ·SCDS AI 분석은 90초)이고 재시도까지 합치면 AIQ·SCDS는 최악 약 4분 40초다. 비동기 작업(워커)에서 호출하고, 결과로 작업 상태를 정한다(README "백엔드 작업 상태와 연결"). FastAPI `async def` 안에서 그대로 부르면 그동안 서버 전체가 멈추므로 워커나 `run_in_threadpool`로 부르고, 작업 시간 제한·큐 가시성 타임아웃은 5분 이상으로 둔다(`WARN.md` D8).
-5. SCDS는 사건 저장 시 `run_scds_rules`(동기, LLM 없음)로 후보를 먼저 응답하고, `status`가 `queued`면 워커에서 `run_scds_analysis(event, rule_result, characters)`로 AI 분석을 한다. 재시도도 `run_scds_analysis`를 다시 부른다. 확정 캐릭터(ASS ConfirmedCharacter)도 넘겨야 캐릭터 설정이 룰 검출·AI 분석에 들어간다.
-6. 반환되는 `error.code`는 모두 `HTTP_STATUS`에 있다. AI 응답이 스키마와 안 맞으면 `AI_*_FAILED`(502)로 오고, `details.internal_code`가 `SCHEMA_VALIDATION_FAILED`다.
+4. 함수는 동기이고 한 번에 수십 초 걸릴 수 있다. 호출 한 번의 제한은 NLCD 30초, REX·AIQ·SCDS·SSM 90초(SSM은 챕터마다)이고 재시도까지 합치면 한 번 호출에 최악 약 4분 40초다. 비동기 작업(워커)에서 호출하고, 결과로 작업 상태를 정한다(README "백엔드 작업 상태와 연결"). FastAPI `async def` 안에서 그대로 부르면 그동안 서버 전체가 멈추므로 워커나 `run_in_threadpool`로 부르고, 작업 시간 제한·큐 가시성 타임아웃은 5분 이상으로 둔다(`WARN.md` D8).
+5. SCDS는 사건 저장 시 `run_scds_rules`(동기, LLM 없음)로 후보를 먼저 응답하고, `status`가 `queued`일 때만 AI 작업(`conflict_check`)을 만들어 워커에서 `run_scds_analysis(event, rule_result, characters)`로 AI 분석을 한다. 재시도도 `run_scds_analysis`를 다시 부른다. 확정 캐릭터(ASS ConfirmedCharacter)도 넘겨야 캐릭터 설정이 룰 검출·AI 분석에 들어간다.
+6. 백엔드 값에 맞춘 것: AIQ `scope`는 `project`/`chapter`/`selection`(`qa_threads_scope_chk`), SSM 노드 `character_ids`는 `run_ssm(..., characters=)`로 넘긴 확정 캐릭터의 `character_id`만(`structure_node_characters` 외래키), NLCD 중복 값은 `character_attributes` 유니크 인덱스 기준으로 합친다. SCDS `skipped`·`no_candidate`는 작업을 만들지 않는다(`jobs_status_chk`). 무시한 충돌 억제는 백엔드 `conflict_suppressions`로 거른다.
+7. 반환되는 `error.code`는 모두 `HTTP_STATUS`에 있다. AI 응답이 스키마와 안 맞으면 `AI_*_FAILED`(502)로 오고, `details.internal_code`가 `SCHEMA_VALIDATION_FAILED`다.
 
 ## 알려진 한계 (자세한 내용은 `docs/specs/claude/WARN.md`)
 
@@ -27,7 +28,6 @@
 | SSM | 챕터별 결과를 이어붙이므로 노드의 `chapter` 번호와 `acts`가 전체 원고 기준이 아니다 | T6 |
 | REX·SSM | 입력 길이 상한이 없다. 긴 원고는 출력 한도(4096 토큰)에 걸려 `AI_*_FAILED`가 날 수 있다 | T9 |
 | 공통 | 프롬프트 인젝션 방어(시스템 프롬프트, 입력 구분자)가 없다 | T16 |
-| 공통 | `OPENROUTER_API_KEY`가 비어 있으면 서버의 `OPENAI_API_KEY`가 대신 openrouter.ai로 전송된다. 운영 환경에 키를 반드시 넣는다 | T24 |
 
 ## 백엔드 팀에 확인이 필요한 것
 

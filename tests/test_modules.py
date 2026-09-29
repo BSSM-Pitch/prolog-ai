@@ -90,9 +90,9 @@ def test_run_rex_empty_input_is_invalid():
 # --- AIQ ---
 
 
-def test_run_aiq_whole_scope_returns_schema_shaped_response():
+def test_run_aiq_project_scope_returns_schema_shaped_response():
     result = run_aiq(
-        question="주인공의 동기가 일관되나요?", manuscript_text="원고 본문", scope="whole"
+        question="주인공의 동기가 일관되나요?", manuscript_text="원고 본문", scope="project"
     )
     assert result == {"data": {"content": ""}, "meta": {}}
 
@@ -345,9 +345,9 @@ def test_run_aiq_selection_text_is_in_prompt(llm_calls):
     assert f"선택 구간({start}~{end}):\n[선택된 문단]" in llm_calls["prompts"][0]
 
 
-def test_run_aiq_whole_scope_has_no_selection_block(llm_calls):
+def test_run_aiq_project_scope_has_no_selection_block(llm_calls):
     llm_calls["responses"] = [{"content": "답"}]
-    run_aiq("질문", "원고 본문", scope="whole")
+    run_aiq("질문", "원고 본문", scope="project")
     assert "선택 구간(" not in llm_calls["prompts"][0]
 
 
@@ -452,3 +452,108 @@ def test_run_scds_analysis_keeps_rule_result_when_ai_fails(llm_calls):
     result = run_scds_analysis(SPLIT_EVENT, rule_result)
     assert result["error"]["code"] == "AI_ANALYSIS_FAILED"
     assert result["error"]["details"]["rule_result"] == rule_result
+
+
+# --- 백엔드 정합·오류 수정 (fix/backend-alignment) ---
+
+
+def test_run_nlcd_drops_blank_and_duplicate_values(llm_calls):
+    text = "피터는 책임감이 강하다. Brave 하다."
+    item = lambda value, evidence="책임감이 강하다": {"value": value, "evidence": evidence}
+    llm_calls["responses"] = [
+        {
+            "personality_tags": [
+                item("책임감 강함"),
+                item(" 책임감 강함 "),
+                item("   "),
+                item("Brave", "Brave 하다"),
+                item("brave", "Brave 하다"),
+            ],
+            "core_values": [],
+            "influence_relations": [],
+            "emotion_keywords": [],
+        }
+    ]
+    result = run_nlcd(text)
+    assert [i["value"] for i in result["data"]["personality_tags"]] == ["책임감 강함", "Brave"]
+
+
+def test_run_rex_requires_violation_keywords(llm_calls):
+    llm_calls["responses"] = [
+        {"extracted_rules": [{"description": "규칙", "evidence": "원고"}]}
+    ]
+    result = run_rex("원고")
+    assert result["error"]["code"] == "AI_EXTRACTION_FAILED"
+    assert result["error"]["details"]["internal_code"] == "SCHEMA_VALIDATION_FAILED"
+
+
+def test_run_rex_cleans_keywords_and_overwrites_source_chapter(llm_calls):
+    llm_calls["responses"] = [
+        {
+            "extracted_rules": [
+                {
+                    "description": "마법은 계약 없이 발현될 수 없다",
+                    "violation_keywords": [" 계약 없이 ", "", "  ", "계약 없이"],
+                    "evidence": "계약 없이는",
+                    "source_chapter": 7,
+                },
+                {"description": "  ", "violation_keywords": ["x"], "evidence": "계약 없이는"},
+            ]
+        }
+    ]
+    result = run_rex("마법은 계약 없이는 쓸 수 없다.")
+    assert result["data"]["extracted_rules"] == [
+        {
+            "description": "마법은 계약 없이 발현될 수 없다",
+            "violation_keywords": ["계약 없이"],
+            "evidence": "계약 없이는",
+            "source_chapter": None,
+        }
+    ]
+
+
+def test_run_aiq_accepts_backend_scopes_and_rejects_whole():
+    for scope in ("project", "chapter"):
+        assert "data" in run_aiq("질문", "원고 본문", scope=scope)
+    assert run_aiq("질문", "원고 본문", scope="whole")["error"]["code"] == "INVALID_INPUT"
+
+
+def test_run_aiq_blank_manuscript_is_invalid():
+    assert run_aiq("질문", "   ")["error"]["code"] == "INVALID_INPUT"
+
+
+def test_run_aiq_non_integer_offsets_are_invalid_input():
+    result = run_aiq("질문", "원고 본문", scope="selection", selection_range={"start": "0", "end": 2})
+    assert result["error"]["code"] == "INVALID_INPUT"
+
+
+def test_run_ssm_keeps_only_known_character_ids(llm_calls):
+    chunk = _chunk(["node_1"], [])
+    chunk["nodes"][0]["character_ids"] = ["char_001", "피터 파커", "char_001"]
+    llm_calls["responses"] = [chunk, chunk]
+    characters = [{"character_id": "char_001", "name": "피터 파커"}]
+    result = run_ssm("원고", characters=characters)
+    assert result["data"]["nodes"][0]["character_ids"] == ["char_001"]
+    assert "char_001: 피터 파커" in llm_calls["prompts"][0]
+
+    result = run_ssm("원고")
+    assert result["data"]["nodes"][0]["character_ids"] == []
+
+
+def test_run_ssm_invalid_characters_is_invalid_input():
+    assert run_ssm("원고", characters=[{"character_id": "c1"}])["error"]["code"] == "INVALID_INPUT"
+
+
+def test_run_ssm_drops_self_and_duplicate_edges(llm_calls):
+    llm_calls["responses"] = [
+        _chunk(["node_1", "node_2"], [("node_1", "node_1"), ("node_1", "node_2"), ("node_1", "node_2")])
+    ]
+    result = run_ssm("단일 원고")
+    assert len(result["data"]["edges"]) == 1
+    assert result["meta"]["removed_edge_count"] == 2
+
+
+def test_run_ssm_failure_reports_chunk_index(llm_calls):
+    llm_calls["responses"] = [_build_fake_instance, LLMFailedError("boom")]
+    result = run_ssm("1장 시작\n내용1\n2장 전개\n내용2")
+    assert result["error"]["details"] == {"chunk_index": 1, "chunk_count": 2}

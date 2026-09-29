@@ -53,6 +53,7 @@
 - AIQ·SCDS AI 분석 시간 제한 30초 → 90초 완료(PR #13, #17).
 - AIQ 후속 질문(PR #15), SCDS 룰 검출/AI 분석 분리(PR #16) 완료.
 - 실제 API 호출 검증 완료(8번, 결과는 `WARN.md` "실제 호출 결과").
+- 2026-09-29 `fix/backend-alignment`: 남은 오류 수정(T22·T24~T37 등)과 실제 백엔드 스키마 맞춤(AIQ `scope`, SSM `character_ids`, NLCD 중복 값, SCDS 작업 상태 안내).
 - 2026-09-29 전체 재검토 완료(PR #18). 다른 개발자의 `WARN_2.md`를 `WARN.md`에 합쳤다.
 - 다른 개발자의 수정 2건 병합 완료: `fix/core-schema-error-code`(T18·A4, 스키마 불일치를 모듈별 `AI_*_FAILED`로 반환), `fix/scds-conflict-target-filter`(T3, SCDS 후보 번호 방식). 해결된 문제는 WARN.md 문제 목록에서 지웠다.
 
@@ -88,34 +89,24 @@
 | SCDS severity 기준 | 기획 | 명세에는 값(low/medium/high)만 있다 | A3 |
 | SSM 분량 부족 기준값 | 기획 | 에러 코드(`MANUSCRIPT_TOO_SHORT`)만 있고 기준값이 없다 | A9 |
 | NLCD 캐릭터 이름 추출 | 백엔드와 NLCD 명세 수정 합의 | "추출한다"로 결정됐지만 필드가 명세에 없어 명세가 바뀌기 전에는 구현하지 않는다 | A1 |
-| 챕터·캐릭터 목록 입력 | 백엔드와 입력 형식 합의 | MSU `Chapter`, ASS `ConfirmedCharacter`(둘 다 명세 형식)를 입력으로 받을지. 받으면 SSM 챕터 인식·chapter 번호·acts·챕터 간 연결, REX `source_chapter`, SSM `character_ids`가 함께 풀린다 | A6, A10, A12, T5, T6, T23, T30 |
+| 챕터·캐릭터 목록 입력 | 백엔드와 입력 형식 합의 | MSU `Chapter`, ASS `ConfirmedCharacter`(둘 다 명세 형식)를 입력으로 받을지. 받으면 SSM 챕터 인식·chapter 번호·acts·챕터 간 연결, REX `source_chapter`가 함께 풀린다(SSM `character_ids`는 `characters` 입력으로 해결) | A6, A10, T5, T6, T23 |
 | AIQ 선택 구간 오프셋 기준 | 기획·백엔드 | 오프셋이 원고 전체 기준인지 챕터 기준인지, 원고 수정 후 어떻게 할지 명세에 없다 | B14, D4 |
-| SCDS 무시 충돌 억제 | 팀 | SCDS 4.11의 억제를 패키지 입력으로 받을지, 백엔드가 결과를 거를지 | T37 |
 | NLCD 중복 판정 주체 | 팀 | 백엔드로 정하면 이 저장소에서 할 일은 없다 | A5 |
 | ASS AI 재추천 범위 | 팀 | ASS 4.8(선택 기능, 기본 비활성화)은 AI 호출 기능인데 이 패키지의 모듈 5개에 없다. 이 저장소에서 만들지 확인한다 | A13 |
 | 프롬프트 작성 담당·범위 | 팀 | 다섯 모듈의 `prompt.py`가 한두 줄짜리 자리표시 문장이고, 도구 스키마에 필드 설명도 없다. 실제 호출에서 REX가 규칙을 하나도 못 뽑았고, NLCD 값 표현이 명세 예시와 달랐다. 명세의 추출 기준(카테고리 정의, 근거 구절 규칙, 출력 필드 설명)을 프롬프트로 옮기는 작업이 필요하지만, 절대 규칙상 "프롬프트 튜닝은 범위 밖"이라 누가 언제 할지 먼저 정한다 | T21 |
 
 ## 3. 오류 수정 (다른 개발자 담당)
 
+`fix/backend-alignment`에서 남은 오류 수정과 실제 백엔드 스키마 맞춤을 처리했다(WARN.md 0절). 남은 것:
+
 | 작업 | 내용 | WARN |
 | --- | --- | --- |
-| REX 위반 키워드 필수화 | `violation_keywords`가 비어도 통과해 SCDS 룰 검출이 끊긴다 | T22 |
-| 키 누락 시 다른 키 전송 | `OPENROUTER_API_KEY`가 비면 `OPENAI_API_KEY`가 openrouter.ai로 나간다 | T24 |
-| 예시 설정 | `.env.example`의 `USE_FAKE_LLM=1` | T25 |
-| 제공사 라우팅 | 도구 호출 미지원 제공사로 가면 3번 실패 | T26 |
-| SCDS 키워드·후보 | 공백 키워드로 모든 사건이 후보, 후보·충돌 중복, 공백 차이·빈 `character_ids`, 사건↔`rule_result` 확인 없음, 후보 번호 느슨한 변환 | T27, T28, T14, T29, T36 |
-| REX `source_chapter` | LLM이 지어낸 번호가 통과 | T30 |
-| SSM 병합 | 중복 `node_id` 연결 오류, 자기 참조·중복 edge, 실패 청크 위치 없음 | T31 |
-| NLCD 중복 값 | 백엔드 유니크 인덱스에 걸림 | T32 |
-| 408 분류 | 시간 초과가 `FAILED`로 분류 | T33 |
-| AIQ 입력 | 빈 원고 통과, 현재 질문 중복 안내 없음 | T34 |
-| 시간 제한 | REX·SSM도 AIQ·SCDS처럼 늘리기 | T35 |
-| 빈 `value` 항목 | 빈 문자열 값이 걸러지지 않는다 | T12 |
-| 문서 | README의 SCDS 작업 상태 안내가 백엔드 `jobs` 제약과 맞지 않음, CI에 Python 3.12 추가 | D6, D10 |
+| SSM 중복 `node_id` | 한 청크에서 같은 id가 두 번 나올 때 두 번째 노드를 버릴지 합칠지 명세에 없다 | T31 |
+| SCDS 빈 `character_ids` 사건 | 백엔드 `conflicts.character_id`는 null 허용이지만 SCDS 2.6 후보는 `character_id` 필수라 명세 확인 필요 | T14 |
 
 ## 4. 이 저장소 밖 (백엔드·기획 확인)
 
-- WARN.md D1~D8 (실제 백엔드 코드 기준). 특히 D2~D5(NLCD 근거·감정 키워드, SCDS `conflict_target` 저장 칸, AIQ `scope` 값, SSM `character_ids` 타입)는 연동 전에 풀어야 한다.
+- WARN.md D1·D3·D7·D8 (실제 백엔드 코드 기준). D3(SCDS `conflict_target`·`chapter` 저장 칸)은 연동 전에 풀어야 한다. D2·D4·D5·D6·D10은 해결됐다.
 - WARN.md B1~B18 (명세끼리 안 맞는 부분), C1~C8 (db.md와 API 명세 불일치. C2·C3는 실제 백엔드 스키마에서 해소됨).
 
 ## 5. 검증 (허락 필요)

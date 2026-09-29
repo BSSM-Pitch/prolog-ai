@@ -23,8 +23,7 @@ class StructureNode(BaseModel):
     chapter: int
     title: str
     summary: str
-    # TODO: 캐릭터 이름 -> character_id 매핑 방법이 이 패키지 범위에 없어,
-    # 실제로 이 필드를 채울 수 있는지는 팀 확인 필요.
+    # 입력으로 받은 확정 캐릭터 목록의 ID만 남긴다(module.py). 목록이 없으면 빈 배열.
     character_ids: list[str] = Field(default_factory=list)
 
 
