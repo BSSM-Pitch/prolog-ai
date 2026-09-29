@@ -22,11 +22,35 @@ def _normalize_spaces(text: str) -> str:
     return re.sub(r"\s+", " ", text).strip()
 
 
+# 어절 끝에서 떼어 보는 조사. 긴 것부터 뗀다.
+_PARTICLES = ("에서", "에게", "으로", "까지", "부터", "로", "에", "의", "을", "를", "은", "는", "이", "가", "와", "과", "도", "만")
+
+
+def _strip_particle(word: str) -> str:
+    """어절 끝의 조사 하나를 뗀다. 남는 말이 두 글자 미만이면 떼지 않는다("낮에"는 그대로)."""
+    for particle in _PARTICLES:
+        if word.endswith(particle) and len(word) - len(particle) >= 2:
+            return word[: -len(particle)]
+    return word
+
+
+def _strip_particles(text: str) -> str:
+    return " ".join(_strip_particle(word) for word in text.split(" "))
+
+
 def _first_matched_keyword(keywords: list[str], normalized_content: str) -> str | None:
-    """사건 본문에 나오는 첫 키워드. 공백만 있는 키워드는 모든 본문에 걸리므로 무시한다."""
+    """사건 본문에 나오는 첫 키워드. 공백만 있는 키워드는 모든 본문에 걸리므로 무시한다.
+
+    글자 그대로 일치를 먼저 보고, 없으면 양쪽 어절 끝의 조사를 떼고 다시 본다. REX가 키워드에 조사를 붙여
+    ("대낮에") 다른 조사가 붙은 본문("대낮의")을 놓치는 일이 실제 호출에서 반복됐다(2026-09-29).
+    같은 키워드로 비교했을 때 위반 검출은 늘고 오검출은 늘지 않았다.
+    """
+    stripped_content = _strip_particles(normalized_content)
     for keyword in keywords:
         normalized = _normalize_spaces(keyword)
-        if normalized and normalized in normalized_content:
+        if not normalized:
+            continue
+        if normalized in normalized_content or _strip_particles(normalized) in stripped_content:
             return keyword
     return None
 

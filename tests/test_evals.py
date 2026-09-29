@@ -55,3 +55,51 @@ def test_main_rejects_real_without_api_key(monkeypatch):
 
     monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
     assert main(["--real"]) == 1
+
+
+def test_judge_skips_llm_for_exact_matches(monkeypatch):
+    from evals import judge
+
+    def boom(*a, **k):
+        raise AssertionError("글자 일치면 LLM을 부르지 않는다")
+
+    monkeypatch.setattr(judge, "call_llm", boom)
+    missing, records = judge.judge_field(["책임감 강함"], ["책임감  강함", "기타"])
+    assert missing == [] and records[0]["reason"] == "글자 일치"
+    assert judge.judge_field(["x"], [])[0] == ["x"]
+
+
+def test_judge_rejects_matched_value_not_in_actual(monkeypatch):
+    from evals import judge
+
+    monkeypatch.setattr(
+        judge,
+        "call_llm",
+        lambda prompt, **_: {
+            "verdicts": [
+                {"expected": "정직", "matched": "정직함", "reason": "같음"},
+                {"expected": "불안", "matched": "지어낸 값", "reason": "같음"},
+            ]
+        },
+    )
+    missing, _ = judge.judge_field(["정직", "불안"], ["정직함", "걱정"])
+    assert missing == ["불안"]
+
+
+def test_run_evals_works_as_a_script():
+    """python evals/run_evals.py로 직접 실행해도 judge를 불러올 수 있어야 한다(패키지 import와 경로가 다르다)."""
+    import subprocess
+    import sys
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parent.parent
+    completed = subprocess.run(
+        [sys.executable, "evals/run_evals.py"],
+        cwd=root,
+        env={"USE_FAKE_LLM": "1", "PATH": ""},
+        capture_output=True,
+        text=True,
+        timeout=60,
+        check=False,
+    )
+    assert completed.returncode == 0, completed.stderr

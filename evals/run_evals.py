@@ -3,6 +3,8 @@
 기본값은 USE_FAKE_LLM=1이며, 이 모드에서는 형식(응답이 성공/실패 봉투 중 하나인지,
 죽지 않는지)과 SCDS의 룰 검출 결과(expected_status, LLM 호출 전에 결정됨)만 채점한다.
 가짜 LLM은 항상 빈 배열을 돌려주므로 expected_values(추출 품질)는 --real일 때만 채점한다.
+--real의 expected_values는 기본적으로 의미 비교(evals/judge.py, LLM-as-a-judge)로 채점하고,
+--exact를 주면 예전처럼 글자 비교만 한다. --show는 응답과 판단 이유를 출력한다.
 
 케이스 내용은 API 명세에 있는 예시만 사용하고 지어내지 않는다. 원고 본문 예시가 없는
 모듈(SSM, AIQ)은 expected_values 없이 형식만 확인한다.
@@ -16,6 +18,11 @@ from pathlib import Path
 from typing import Any
 
 from prolog_ai import run_aiq, run_nlcd, run_rex, run_scds, run_ssm
+
+try:
+    from evals.judge import judge_field
+except ModuleNotFoundError:  # python evals/run_evals.py로 직접 실행할 때
+    from judge import judge_field
 
 CASES_DIR = Path(__file__).parent / "cases"
 FUNCTIONS = {"aiq": run_aiq, "nlcd": run_nlcd, "rex": run_rex, "scds": run_scds, "ssm": run_ssm}
@@ -51,8 +58,12 @@ def _extract_labels(items: Any) -> list[str]:
     return labels
 
 
-def run_case(case: dict[str, Any], real: bool) -> tuple[bool, str]:
+def run_case(
+    case: dict[str, Any], real: bool, exact: bool = False, show: bool = False
+) -> tuple[bool, str]:
     result = FUNCTIONS[case["module"]](**case["input"])
+    if show:
+        print(json.dumps(result, ensure_ascii=False, indent=1))
 
     if set(result) not in ({"data", "meta"}, {"error"}):
         return False, f"응답 형식이 아님: 키={sorted(result)}"
@@ -66,7 +77,13 @@ def run_case(case: dict[str, Any], real: bool) -> tuple[bool, str]:
         missing = {}
         for field, expected in case["expected_values"].items():
             actual_labels = _extract_labels(result["data"].get(field))
-            not_found = [v for v in expected if v not in actual_labels]
+            if exact:
+                not_found = [v for v in expected if v not in actual_labels]
+            else:
+                not_found, records = judge_field(expected, actual_labels)
+                if show:
+                    for r in records:
+                        print(f"  [{field}] {r['expected']!r} → {r['matched']!r} ({r['reason']})")
             if not_found:
                 missing[field] = not_found
         if missing:
@@ -81,6 +98,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--real", action="store_true", help="실제 LLM API(OpenRouter)로 호출해 expected_values까지 채점"
     )
+    parser.add_argument("--exact", action="store_true", help="--real 채점을 글자 비교로만 한다")
+    parser.add_argument("--show", action="store_true", help="응답과 판단 이유를 출력한다")
     args = parser.parse_args(argv)
 
     if args.real:
@@ -98,7 +117,7 @@ def main(argv: list[str] | None = None) -> int:
 
     failed = 0
     for case in cases:
-        ok, detail = run_case(case, args.real)
+        ok, detail = run_case(case, args.real, exact=args.exact, show=args.show)
         print(f"[{'PASS' if ok else 'FAIL'}] {case['module']}/{case['name']}: {detail}")
         if not ok:
             failed += 1
