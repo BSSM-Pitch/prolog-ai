@@ -75,10 +75,14 @@ def run_module(
         try:
             parsed = output_schema.model_validate(raw_output)
         except ValidationError as exc:
+            # 명세에 없는 내부 코드는 밖으로 내보내지 않고, 모듈의 AI_*_FAILED로 바꿔 details에 남긴다.
             return make_error(
-                ErrorCode.SCHEMA_VALIDATION_FAILED,
+                ai_errors.failed,
                 "LLM 응답이 정해진 스키마를 따르지 않습니다.",
-                {"errors": exc.errors(include_url=False)},
+                {
+                    "internal_code": ErrorCode.SCHEMA_VALIDATION_FAILED.value,
+                    "errors": exc.errors(include_url=False),
+                },
             )
 
         data = parsed.model_dump()

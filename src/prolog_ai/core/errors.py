@@ -32,12 +32,13 @@ class ErrorCode(StrEnum):
     # SSM
     MANUSCRIPT_TOO_SHORT = "MANUSCRIPT_TOO_SHORT"
 
-    # 모듈 내부용: 명세에 없는 코드. 외부 노출 여부와 HTTP 상태는 팀 결정 필요.
+    # 모듈 내부용: 명세에 없는 코드. error.code로 내보내지 않는다(WARN.md A4 ①).
+    # SCHEMA_VALIDATION_FAILED는 모듈의 AI_*_FAILED로 바꿔 보내고 details.internal_code에만 남긴다.
     AI_TIMEOUT = "AI_TIMEOUT"
     SCHEMA_VALIDATION_FAILED = "SCHEMA_VALIDATION_FAILED"
 
 
-# 명세에 적힌 HTTP 상태. 모듈 내부용 코드는 명세에 없어 비워 둔다 (TODO: 팀 결정).
+# 명세에 적힌 HTTP 상태. 내부용 코드는 error.code로 나가지 않으므로 넣지 않는다.
 HTTP_STATUS: dict[ErrorCode, int] = {
     ErrorCode.INVALID_INPUT: 400,
     ErrorCode.INVALID_SELECTION_RANGE: 400,

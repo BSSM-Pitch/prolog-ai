@@ -13,7 +13,7 @@ from prolog_ai import (
     run_scds_rules,
     run_ssm,
 )
-from prolog_ai.core.errors import MODULE_AI_ERRORS, ErrorCode
+from prolog_ai.core.errors import HTTP_STATUS, MODULE_AI_ERRORS, ErrorCode
 from prolog_ai.core.llm import LLMFailedError, LLMTimeoutError, _build_fake_instance
 
 # 모든 모듈에서 LLM 경로까지 가도록 SCDS 위반 키워드를 포함한 정상 문장.
@@ -152,7 +152,9 @@ def test_schema_mismatched_llm_response(module, raw, monkeypatch):
     patch_llm(monkeypatch, lambda prompt, *, schema, **_: raw)
     result = CALLERS[module](NORMAL_TEXT)
     assert_envelope(result)
-    assert result["error"]["code"] == "SCHEMA_VALIDATION_FAILED"
+    assert result["error"]["code"] == MODULE_AI_ERRORS[module].failed
+    assert result["error"]["details"]["internal_code"] == "SCHEMA_VALIDATION_FAILED"
+    assert result["error"]["code"] in HTTP_STATUS
 
 
 @pytest.mark.parametrize(
