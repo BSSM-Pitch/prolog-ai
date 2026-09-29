@@ -190,7 +190,7 @@ def test_aiq_uses_longer_timeout_than_other_modules(fake_client):
     from prolog_ai.modules.aiq.module import AIQ_TIMEOUT_SECONDS
 
     fake_client.behaviors = [tool_response({"content": "답"})]
-    run_aiq("질문", "원고", "whole")
+    run_aiq("질문", "원고", "project")
     assert fake_client.init_kwargs["timeout"] == AIQ_TIMEOUT_SECONDS > llm.DEFAULT_TIMEOUT_SECONDS
 
     fake_client.behaviors = [tool_response({})]
@@ -213,3 +213,35 @@ def test_scds_analysis_uses_longer_timeout(fake_client):
     fake_client.behaviors = [tool_response({"conflicts": []})]
     run_scds_analysis({"character_ids": ["c"], "content": "살해"}, rule_result)
     assert fake_client.init_kwargs["timeout"] == SCDS_TIMEOUT_SECONDS > llm.DEFAULT_TIMEOUT_SECONDS
+
+
+def test_missing_api_key_fails_before_creating_client(fake_client, monkeypatch):
+    monkeypatch.delenv("OPENROUTER_API_KEY")
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-openai-should-not-be-sent")
+    with pytest.raises(LLMFailedError, match="OPENROUTER_API_KEY"):
+        call_llm("p", schema=Output)
+    assert fake_client.init_kwargs is None
+
+
+def test_requests_only_tool_capable_providers(fake_client):
+    fake_client.behaviors = [tool_response({"value": "ok"})]
+    call_llm("p", schema=Output)
+    assert fake_client.calls[0]["extra_body"] == {"provider": {"require_parameters": True}}
+
+
+def test_http_408_after_retries_is_timeout(fake_client):
+    fake_client.behaviors = [status_error(openai.APIStatusError, 408)]
+    with pytest.raises(LLMTimeoutError):
+        call_llm("p", schema=Output)
+
+
+def test_rex_and_ssm_use_longer_timeout(fake_client):
+    from prolog_ai import run_rex, run_ssm
+
+    fake_client.behaviors = [tool_response({"extracted_rules": []})]
+    run_rex("원고")
+    assert fake_client.init_kwargs["timeout"] > llm.DEFAULT_TIMEOUT_SECONDS
+
+    fake_client.behaviors = [tool_response({"acts": [], "nodes": []})]
+    run_ssm("원고")
+    assert fake_client.init_kwargs["timeout"] > llm.DEFAULT_TIMEOUT_SECONDS

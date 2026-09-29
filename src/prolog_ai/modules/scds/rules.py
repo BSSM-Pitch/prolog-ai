@@ -11,9 +11,24 @@ TODO: RULE-01~04의 정확한 판정 기준은 원본 기능 명세서(SCDS 기�
 직접 대조하는 판정(예시의 RULE-01)은 별도 키워드 사전이 필요해 구현하지 않았다.
 """
 
+import re
 from typing import Any
 
 from prolog_ai.core.status import SkippedReason
+
+
+def _normalize_spaces(text: str) -> str:
+    """연속된 공백·줄바꿈을 한 칸으로 바꾼다. "잔혹하게  살해"도 "잔혹하게 살해"로 찾기 위해서다."""
+    return re.sub(r"\s+", " ", text).strip()
+
+
+def _first_matched_keyword(keywords: list[str], normalized_content: str) -> str | None:
+    """사건 본문에 나오는 첫 키워드. 공백만 있는 키워드는 모든 본문에 걸리므로 무시한다."""
+    for keyword in keywords:
+        normalized = _normalize_spaces(keyword)
+        if normalized and normalized in normalized_content:
+            return keyword
+    return None
 
 
 def detect_conflict_candidates(
@@ -35,19 +50,25 @@ def detect_conflict_candidates(
             "candidates": [],
         }
 
-    content = event.get("content", "")
-    candidates = [
-        {
-            "rule_id": rule.get("rule_id"),
-            "character_id": character_id,
-            "conflict_target": rule.get("description"),
-            "matched_keyword": keyword,
-        }
-        for character_id in event.get("character_ids", [])
-        for rule in world_rules
-        for keyword in rule.get("violation_keywords") or []
-        if keyword and keyword in content
-    ]
+    content = _normalize_spaces(event.get("content", ""))
+    # 같은 (캐릭터, 규칙)은 키워드가 여러 개 걸려도 후보 하나로 합친다. 첫 번째로 걸린 키워드를 남긴다.
+    candidates = []
+    seen: set[tuple[str, str]] = set()
+    for character_id in dict.fromkeys(event.get("character_ids", [])):
+        for rule in world_rules:
+            keyword = _first_matched_keyword(rule.get("violation_keywords") or [], content)
+            key = (character_id, rule.get("rule_id"))
+            if keyword is None or key in seen:
+                continue
+            seen.add(key)
+            candidates.append(
+                {
+                    "rule_id": rule.get("rule_id"),
+                    "character_id": character_id,
+                    "conflict_target": rule.get("description"),
+                    "matched_keyword": keyword,
+                }
+            )
 
     return {
         "has_candidate": bool(candidates),

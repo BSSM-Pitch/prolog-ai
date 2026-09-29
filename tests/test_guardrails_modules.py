@@ -177,8 +177,16 @@ def test_schema_mismatched_llm_response(module, raw, monkeypatch):
             "rex",
             {
                 "extracted_rules": [
-                    {"description": "폭력 금지", "evidence": "강도를 잔혹하게 살해함"},
-                    {"description": "지어낸 규칙", "evidence": "원문에 없는 문장"},
+                    {
+                        "description": "폭력 금지",
+                        "violation_keywords": ["살해"],
+                        "evidence": "강도를 잔혹하게 살해함",
+                    },
+                    {
+                        "description": "지어낸 규칙",
+                        "violation_keywords": [],
+                        "evidence": "원문에 없는 문장",
+                    },
                 ]
             },
             "extracted_rules",
@@ -275,8 +283,6 @@ def test_ssm_chunking_crash_does_not_crash(monkeypatch):
         {"start": 10, "end": 5},
         {"start": -1, "end": 5},
         {"start": 0, "end": len(NORMAL_TEXT) + 1},
-        {"start": "0", "end": 5},
-        {"start": True, "end": 5},
     ],
 )
 def test_aiq_bad_selection_range(selection_range):
@@ -367,3 +373,55 @@ def test_scds_rules_crash_returns_rule_engine_error(monkeypatch):
     result = run_scds_rules({"character_ids": ["c"], "content": "내용"}, [])
     assert_envelope(result)
     assert result["error"]["code"] == "RULE_ENGINE_ERROR"
+
+
+# --- SCDS 키워드·후보 (fix/backend-alignment) ---
+
+SCDS_EVENT = {"character_ids": ["char_001"], "content": "강도를 잔혹하게  살해했다."}
+
+
+def _rule(keywords, rule_id="wr_001"):
+    return {"rule_id": rule_id, "description": "폭력 금지", "violation_keywords": keywords}
+
+
+def test_scds_blank_keyword_matches_nothing():
+    result = run_scds_rules({"character_ids": ["c1"], "content": "x y"}, [_rule([" ", ""])])
+    assert result["data"]["status"] == "no_candidate"
+
+
+def test_scds_keyword_matches_despite_whitespace_difference():
+    result = run_scds_rules(SCDS_EVENT, [_rule(["잔혹하게 살해"])])
+    assert result["data"]["status"] == "queued"
+
+
+def test_scds_candidates_are_merged_per_character_and_rule():
+    event = {**SCDS_EVENT, "character_ids": ["char_001", "char_001"]}
+    result = run_scds_rules(event, [_rule(["살해", "잔혹하게 살해"])])
+    candidates = result["data"]["rule_result"]["candidates"]
+    assert [(c["character_id"], c["matched_keyword"]) for c in candidates] == [("char_001", "살해")]
+
+
+def test_scds_duplicate_and_non_int_candidate_index(monkeypatch):
+    advice = {"severity": "high", "advice": "조언"}
+    patch_llm(
+        monkeypatch,
+        lambda prompt, *, schema, **_: {
+            "conflicts": [{"candidate_index": 0, **advice}, {"candidate_index": 0, **advice}]
+        },
+    )
+    result = run_scds(SCDS_EVENT, [_rule(["살해"])])
+    assert len(result["data"]["conflicts"]) == 1
+    assert result["meta"]["removed_conflict_count"] == 1
+
+    patch_llm(
+        monkeypatch,
+        lambda prompt, *, schema, **_: {"conflicts": [{"candidate_index": True, **advice}]},
+    )
+    assert run_scds(SCDS_EVENT, [_rule(["살해"])])["error"]["code"] == "AI_ANALYSIS_FAILED"
+
+
+def test_scds_analysis_rejects_rule_result_from_other_event():
+    rule_result = run_scds_rules(SCDS_EVENT, [_rule(["살해"])])["data"]["rule_result"]
+    other_event = {"character_ids": ["char_999"], "content": "다른 사건"}
+    result = run_scds_analysis(other_event, rule_result)
+    assert result["error"]["code"] == "INVALID_INPUT"

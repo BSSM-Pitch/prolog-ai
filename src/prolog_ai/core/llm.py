@@ -70,6 +70,9 @@ def _call_real_llm(
 
     model = os.environ.get("PROLOG_AI_MODEL") or DEFAULT_MODEL
     api_key = os.environ.get("OPENROUTER_API_KEY")
+    # 키가 비면 SDK가 OPENAI_API_KEY를 대신 써서 openrouter.ai로 보내므로 SDK를 만들기 전에 막는다.
+    if not api_key:
+        raise LLMFailedError("OPENROUTER_API_KEY가 설정되지 않았습니다.")
     # SDK도 자체 재시도(기본 2회)를 하므로 끄지 않으면 이 함수의 재시도와 겹쳐 요청이 최대 9번 나간다.
     client = openai.OpenAI(
         api_key=api_key, base_url=OPENROUTER_BASE_URL, timeout=timeout, max_retries=0
@@ -95,6 +98,8 @@ def _call_real_llm(
                     }
                 ],
                 tool_choice={"type": "function", "function": {"name": "respond"}},
+                # 도구 호출을 지원하는 제공사로만 보낸다. 지원하지 않는 제공사로 가면 매번 실패한다.
+                extra_body={"provider": {"require_parameters": True}},
             )
         except openai.APIStatusError as exc:
             if not _is_retryable_status(exc.status_code):
@@ -126,7 +131,11 @@ def _call_real_llm(
             continue
         return parsed
 
-    if isinstance(last_error, openai.APITimeoutError):
+    # 408(요청 시간 초과)로 재시도가 끝난 것도 시간 초과로 분류한다.
+    timed_out = isinstance(last_error, openai.APITimeoutError) or (
+        isinstance(last_error, openai.APIStatusError) and last_error.status_code == 408
+    )
+    if timed_out:
         raise LLMTimeoutError(str(last_error)) from last_error
     raise LLMFailedError(str(last_error)) from last_error
 

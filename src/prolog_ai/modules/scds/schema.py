@@ -13,11 +13,12 @@ TODO: related_chapter_ref(관련 설정이 정의된 챕터 참조)를 이 함�
 
 from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, StrictInt
 
 
 class ConflictAdvice(BaseModel):
-    candidate_index: int = Field(description="충돌로 판단한 룰 검출 후보의 번호 ([번호])")
+    # true나 "0"이 후보 번호로 바뀌지 않도록 엄격한 정수만 받는다.
+    candidate_index: StrictInt = Field(description="충돌로 판단한 룰 검출 후보의 번호 ([번호])")
     severity: Literal["low", "medium", "high"]
     advice: str
 

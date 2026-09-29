@@ -8,10 +8,14 @@ from pydantic import BaseModel, Field
 
 class ExtractedRule(BaseModel):
     description: str
-    violation_keywords: list[str] = Field(default_factory=list)
+    # SCDS 룰 검출(RULE-02)은 이 키워드로만 후보를 찾는다(SCDS 2.2). 비어 있으면 REX → SCDS가 끊기므로
+    # 기본값 없이 필수로 둔다.
+    violation_keywords: list[str] = Field(
+        description="이 규칙을 어기는 사건 본문에 나올 만한 위반 키워드 목록 (SCDS RULE-02 판정에 사용)"
+    )
     evidence: str
-    # TODO: 이 함수는 원고 텍스트 조각 하나만 받으므로 어느 챕터에서 나온 규칙인지 알 수 없다.
-    # 여러 챕터가 섞인 입력을 여러 번 호출하는 구조라면 호출자가 채워야 한다.
+    # 이 함수는 원고 텍스트만 받아 챕터 번호를 알 수 없다. LLM이 넣은 값은 module.py가 null로 덮어쓴다
+    # (WARN.md A6, T30). 챕터 목록 입력이 정해지면 채운다.
     source_chapter: int | None = None
 
 

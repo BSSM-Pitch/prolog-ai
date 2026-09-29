@@ -8,7 +8,10 @@ from prolog_ai.core.runner import InputValidationError, run_module
 from prolog_ai.modules.aiq.prompt import build_prompt
 from prolog_ai.modules.aiq.schema import AIQOutput
 
-SCOPES = ("whole", "selection")
+# 백엔드 insight.qa_threads.scope 값(qa_threads_scope_chk)을 따른다. 명세 AIQ 2.1의 whole은
+# 백엔드에서 project/chapter로 나뉜다(WARN.md D4). project·chapter는 넘겨받은 manuscript_text
+# 전체를 보고 답하므로 동작이 같고, 어떤 본문을 넘길지는 백엔드가 정한다.
+SCOPES = ("project", "chapter", "selection")
 # AIQ 2.2 QAMessage.role
 MESSAGE_ROLES = ("user", "assistant")
 # 답변은 긴 글이라 다른 모듈보다 오래 걸린다(실측 약 30초). 명세상 AIQ는 폴링(비동기)이라
@@ -24,12 +27,13 @@ def _invalid_range(message: str, selection_range: Any) -> InputValidationError:
 
 def _validate(data: dict) -> dict:
     expect_text(data["question"], "question")
-    manuscript_text = expect_type(data["manuscript_text"], str, "manuscript_text")
+    manuscript_text = expect_text(data["manuscript_text"], "manuscript_text")
 
     scope = data["scope"]
     if scope not in SCOPES:
         raise InputValidationError(
-            "scope는 whole 또는 selection이어야 합니다.", {"field": "scope", "received": scope}
+            "scope는 project, chapter, selection 중 하나여야 합니다.",
+            {"field": "scope", "received": scope},
         )
 
     if scope == "selection":
@@ -37,8 +41,11 @@ def _validate(data: dict) -> dict:
         if not isinstance(selection_range, dict):
             raise _invalid_range("scope=selection이지만 selection_range가 없습니다.", selection_range)
         start, end = selection_range.get("start"), selection_range.get("end")
-        if any(not isinstance(v, int) or isinstance(v, bool) for v in (start, end)):
-            raise _invalid_range("selection_range의 start, end는 정수여야 합니다.", selection_range)
+        if start is None or end is None:
+            raise _invalid_range("selection_range에 start, end가 없습니다.", selection_range)
+        # 값이 있는데 정수가 아니면 범위 문제가 아니라 입력 형식 오류다.
+        expect_type(start, int, "selection_range.start")
+        expect_type(end, int, "selection_range.end")
         if not 0 <= start < end <= len(manuscript_text):
             raise _invalid_range("selection_range가 원고 범위를 벗어났습니다.", selection_range)
 
@@ -72,13 +79,14 @@ def _validate_messages(messages: Any) -> list[dict[str, str]]:
 def run_aiq(
     question: str,
     manuscript_text: str,
-    scope: str = "whole",
+    scope: str = "project",
     selection_range: dict[str, int] | None = None,
     messages: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     """원고에 대한 질문에 답한다.
 
     messages는 같은 스레드의 이전 메시지(시간순, AIQ 4.4 후속 질문)다. 첫 질문이면 비워 둔다.
+    지금 묻는 질문은 question으로만 넘기고 messages에는 넣지 않는다(넣으면 두 번 들어간다).
     """
     return run_module(
         module="aiq",
