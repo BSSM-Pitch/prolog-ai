@@ -1,0 +1,53 @@
+{
+  "description": "SCDS 검증용 세트(과적합 확인). 튜닝에 쓴 events.json과 세계관·문체를 다르게 썼다(무협·SF, 대사, 긴 문장). 모든 사건에 위반 키워드가 들어 있어 AI 분석까지 간다. 이 세트의 결과를 보고 프롬프트를 고치지 않는다.",
+  "world_rules": [
+    {
+      "rule_id": "wr_101",
+      "title": "천마검의 주인",
+      "description": "천마검은 검이 주인으로 택한 자가 아니면 칼집에서 뽑을 수 없다",
+      "violation_keywords": ["천마검을 뽑", "칼집에서 뽑", "그 검을 뽑"]
+    },
+    {
+      "rule_id": "wr_102",
+      "title": "제3구역의 망각",
+      "description": "제3구역에 들어갔다 나온 사람은 그 안에서 있었던 일을 모두 잊는다",
+      "violation_keywords": ["제3구역"]
+    },
+    {
+      "rule_id": "wr_103",
+      "title": "혈맹",
+      "description": "혈맹을 맺은 문파의 사람끼리는 서로에게 칼을 겨눌 수 없다",
+      "violation_keywords": ["겨누", "베어", "칼을 들이"]
+    }
+  ],
+  "characters": [
+    {"character_id": "c_11", "name": "설화", "personality_tags": ["차분함"], "core_values": ["의리"]},
+    {"character_id": "c_12", "name": "백야", "personality_tags": ["냉정함"], "core_values": ["강함 추구"]},
+    {"character_id": "c_13", "name": "한나", "personality_tags": ["호기심 많음"], "core_values": ["진실 추구"]}
+  ],
+  "events": [
+    {"id": "clear_01", "category": "명백한 위반", "rule_id": "wr_101", "character_ids": ["c_12"], "content": "\"주인이고 뭐고 알 게 뭐냐.\" 천마검에게 한 번도 선택받지 못한 백야는 그대로 천마검을 뽑아 들고 휘둘렀다.", "expected_conflict": true},
+    {"id": "clear_02", "category": "명백한 위반", "rule_id": "wr_102", "character_ids": ["c_13"], "content": "제3구역에서 사흘을 보낸 한나는 밖으로 나오자마자 안에서 본 실험실 구조를 하나도 빠짐없이 그려 냈다.", "expected_conflict": true},
+    {"id": "clear_03", "category": "명백한 위반", "rule_id": "wr_103", "character_ids": ["c_11"], "content": "청운문과 혈맹을 맺은 백호문의 제자 설화는, 청운문 장로의 목에 칼을 겨누었다.", "expected_conflict": true},
+    {"id": "clear_04", "category": "명백한 위반", "rule_id": "wr_103", "character_ids": ["c_12"], "content": "백야는 청운문 제자를 등 뒤에서 베어 넘겼다. 백야의 문파와 청운문은 대대로 혈맹을 맺은 사이였다.", "expected_conflict": true},
+    {"id": "clear_05", "category": "명백한 위반", "rule_id": "wr_102", "character_ids": ["c_13"], "content": "한나는 제3구역에 들어갔다 나왔지만, 그 안에서 동료와 나눈 대화를 한 마디도 빠짐없이 또렷하게 기억했다.", "expected_conflict": true},
+
+    {"id": "subtle_01", "category": "헷갈리는 위반", "rule_id": "wr_101", "character_ids": ["c_11"], "content": "천마검이 주인으로 택한 이는 백야뿐이었다. 그날 밤 설화는 아무도 몰래, 조심스럽게 그 검을 뽑아 달빛에 비춰 보았다.", "expected_conflict": true, "note": "조심스러운 태도, 몰래 한 행동"},
+    {"id": "subtle_02", "category": "헷갈리는 위반", "rule_id": "wr_102", "character_ids": ["c_13"], "content": "\"기억 안 난다니까요.\" 한나는 동료들 앞에서 그렇게 잡아뗐지만, 제3구역 안에서 본 암호를 몰래 수첩에 옮겨 적고 있었다.", "expected_conflict": true, "note": "인물의 말과 실제 사실이 다름"},
+    {"id": "subtle_03", "category": "헷갈리는 위반", "rule_id": "wr_103", "character_ids": ["c_12"], "content": "\"혈맹이니 선은 넘지 않겠소.\" 백야는 그렇게 말하며 혈맹 백호문 장문인의 목에 칼끝만 살짝 겨누었다.", "expected_conflict": true, "note": "'선을 넘지 않겠다'는 말과 달리 칼을 겨눔"},
+    {"id": "subtle_04", "category": "헷갈리는 위반", "rule_id": "wr_102", "character_ids": ["c_13"], "content": "제3구역을 나온 한나에게 누군가 안에서 무엇을 했느냐고 묻자, 그녀는 머뭇거림 없이 그날 있었던 일을 순서대로 이야기했다.", "expected_conflict": true, "note": "'기억한다'는 말 없이 행동으로만 드러남"},
+    {"id": "subtle_05", "category": "헷갈리는 위반", "rule_id": "wr_101", "character_ids": ["c_12"], "content": "천마검이 새 주인으로 설화를 택한 지 사흘째 되던 날, 백야는 설화가 잠든 틈에 천마검을 칼집에서 뽑아 들었다.", "expected_conflict": true, "note": "전에는 주인이었을 법한 인물이지만 지금 주인이 아님"},
+
+    {"id": "keep_01", "category": "규칙을 지키는 장면", "rule_id": "wr_101", "character_ids": ["c_12"], "content": "천마검이 주인으로 택한 백야는 망설임 없이 천마검을 뽑아 들고 적진으로 달려갔다.", "expected_conflict": false},
+    {"id": "keep_02", "category": "규칙을 지키는 장면", "rule_id": "wr_102", "character_ids": ["c_13"], "content": "제3구역에서 나온 한나는 자기가 왜 연구소 복도에 서 있는지조차 기억하지 못했다.", "expected_conflict": false},
+    {"id": "keep_03", "category": "규칙을 지키는 장면", "rule_id": "wr_103", "character_ids": ["c_11"], "content": "혈맹과는 아무 인연도 없는 흑풍문 자객이 달려들자, 설화는 주저 없이 칼을 겨누었다.", "expected_conflict": false, "note": "혈맹 문파가 아님"},
+    {"id": "keep_04", "category": "규칙을 지키는 장면", "rule_id": "wr_101", "character_ids": ["c_11"], "content": "천마검을 뽑으려고 손잡이를 쥔 설화의 팔에 힘줄이 섰지만, 검은 칼집에서 한 치도 움직이지 않았다.", "expected_conflict": false, "note": "규칙대로 뽑히지 않음"},
+    {"id": "keep_05", "category": "규칙을 지키는 장면", "rule_id": "wr_102", "character_ids": ["c_13"], "content": "한나는 제3구역 입구에서 출입 기록만 확인하고 그대로 돌아섰다.", "expected_conflict": false, "note": "들어가지 않음"},
+
+    {"id": "neg_01", "category": "부정문", "rule_id": "wr_103", "character_ids": ["c_12"], "content": "혈맹의 형제에게 칼을 겨누고 싶은 충동이 치밀었지만, 백야는 이를 악물고 검을 거두었다.", "expected_conflict": false},
+    {"id": "neg_02", "category": "부정문", "rule_id": "wr_101", "character_ids": ["c_11"], "content": "설화는 끝내 천마검을 뽑지 않았다.", "expected_conflict": false},
+    {"id": "neg_03", "category": "부정문", "rule_id": "wr_102", "character_ids": ["c_13"], "content": "한나는 제3구역에 한 번도 들어가 본 적이 없다.", "expected_conflict": false},
+    {"id": "neg_04", "category": "부정문", "rule_id": "wr_103", "character_ids": ["c_12"], "content": "\"혈맹이고 뭐고, 저놈들을 베어 버릴까요?\" 부하의 물음에 백야는 말없이 고개를 저었다.", "expected_conflict": false, "note": "다른 인물의 말, 백야는 거절"},
+    {"id": "neg_05", "category": "부정문", "rule_id": "wr_102", "character_ids": ["c_13"], "content": "한나는 제3구역 문 앞까지 갔다가 경보음이 울리자 발걸음을 멈췄다.", "expected_conflict": false}
+  ]
+}

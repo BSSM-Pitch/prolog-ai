@@ -44,13 +44,24 @@ def _first_matched_keyword(keywords: list[str], normalized_content: str) -> str 
     글자 그대로 일치를 먼저 보고, 없으면 양쪽 어절 끝의 조사를 떼고 다시 본다. REX가 키워드에 조사를 붙여
     ("대낮에") 다른 조사가 붙은 본문("대낮의")을 놓치는 일이 실제 호출에서 반복됐다(2026-09-29).
     같은 키워드로 비교했을 때 위반 검출은 늘고 오검출은 늘지 않았다.
+
+    마지막으로 조사를 뗀 뒤 공백을 모두 지우고 한 번 더 본다. 한국어는 띄어쓰기가 사람마다 달라
+    "허락받지 않"이 "허락도 받지 않고"(조사를 떼면 "허락 받지 않고")에 걸리지 않았다(evals/rex_bench,
+    2026-09-30). 이 비교는 오검출을 조금 늘리지만, 후보는 AI 분석이 다시 거르고(evals/scds_bench에서
+    지키는 장면·부정문 100% 걸러 냄) 놓친 위반은 되돌릴 수 없어 검출을 우선한다.
     """
     stripped_content = _strip_particles(normalized_content)
+    compact_content = stripped_content.replace(" ", "")
     for keyword in keywords:
         normalized = _normalize_spaces(keyword)
         if not normalized:
             continue
-        if normalized in normalized_content or _strip_particles(normalized) in stripped_content:
+        stripped_keyword = _strip_particles(normalized)
+        if (
+            normalized in normalized_content
+            or stripped_keyword in stripped_content
+            or stripped_keyword.replace(" ", "") in compact_content
+        ):
             return keyword
     return None
 

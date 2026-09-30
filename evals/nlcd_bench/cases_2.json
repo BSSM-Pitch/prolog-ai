@@ -1,0 +1,102 @@
+{
+  "description": "NLCD 검증용 세트(과적합 확인). 튜닝에 쓴 cases.json과 문체를 다르게 썼다(대사, 긴 문장, 반어, 드러난 모습과 속마음의 차이). 체크 규칙은 cases.json과 같다. 이 세트의 결과를 보고 프롬프트를 고치지 않는다.",
+  "cases": [
+    {
+      "id": "basic_01",
+      "category": "기본 추출",
+      "source_text": "\"귀찮아 죽겠네.\" 입버릇처럼 투덜대면서도 지안은 반 친구들의 부탁을 한 번도 거절한 적이 없다.",
+      "checks": [
+        {"field": "personality_tags", "any_of": ["거절", "다정", "배려", "친절", "착", "무른", "츤데레", "투덜", "정 많", "헌신"]}
+      ]
+    },
+    {
+      "id": "basic_02",
+      "category": "기본 추출",
+      "source_text": "준서는 계산이 빠르고, 손해 보는 일은 절대 하지 않는다.",
+      "checks": [
+        {"field": "personality_tags", "any_of": ["계산", "타산", "실리", "영리", "약삭", "치밀", "현실"]},
+        {"field": "emotion_keywords", "empty": true}
+      ]
+    },
+    {
+      "id": "value_01",
+      "category": "카테고리 경계",
+      "source_text": "은퇴한 형사 박정우는 \"법보다 사람이 먼저\"라는 말을 평생의 신조로 삼아 왔다.",
+      "checks": [
+        {"field": "core_values", "any_of": ["사람", "인간", "인명", "인본"]}
+      ]
+    },
+    {
+      "id": "value_02",
+      "category": "카테고리 경계",
+      "source_text": "세아는 약속 시간에 늦는 사람을 이해하지 못한다. 그녀에게 시간 약속은 곧 신뢰였다.",
+      "checks": [
+        {"field": "core_values", "any_of": ["시간", "약속", "신뢰"]}
+      ]
+    },
+    {
+      "id": "influence_01",
+      "category": "영향 관계",
+      "source_text": "열 살 때부터 떠돌이 약초꾼 할아버지를 따라 산을 누비며 자란 류하는, 지금도 풀 한 포기를 함부로 뽑지 않는다.",
+      "checks": [
+        {"field": "influence_relations", "any_of": ["약초꾼", "할아버지"]},
+        {"field": "core_values", "any_of": ["자연", "생명", "풀", "식물"]}
+      ]
+    },
+    {
+      "id": "influence_02",
+      "category": "영향 관계",
+      "source_text": "첫사랑 이안에게 버림받은 뒤로, 서린은 누구에게도 속마음을 털어놓지 않는다.",
+      "checks": [
+        {"field": "influence_relations", "any_of": ["이안", "첫사랑"]},
+        {"field": "emotion_keywords", "any_of": ["상처", "불신", "외로", "두려", "경계", "슬픔", "배신", "고독"]}
+      ]
+    },
+    {
+      "id": "emotion_01",
+      "category": "감정 추론",
+      "source_text": "합격자 명단 페이지를 몇 번이고 새로고침하던 태린의 손가락이 가늘게 떨렸다.",
+      "checks": [
+        {"field": "emotion_keywords", "any_of": ["불안", "초조", "긴장", "조마", "걱정", "두근", "떨림"]}
+      ]
+    },
+    {
+      "id": "emotion_02",
+      "category": "감정 추론",
+      "source_text": "십 년 만에 돌아온 고향 집 대문 앞에서, 민호는 한참을 웃다가 끝내 눈시울을 붉혔다.",
+      "checks": [
+        {"field": "emotion_keywords", "any_of": ["그리움", "기쁨", "감격", "반가", "벅차", "뭉클", "향수", "감동"]}
+      ]
+    },
+    {
+      "id": "no_info_01",
+      "category": "해당 없음",
+      "source_text": "키 190센티미터의 거구인 그는 왼쪽 눈썹에 오래된 흉터가 하나 있다.",
+      "checks": [
+        {"field": "personality_tags", "empty": true},
+        {"field": "core_values", "empty": true},
+        {"field": "influence_relations", "empty": true},
+        {"field": "emotion_keywords", "empty": true}
+      ]
+    },
+    {
+      "id": "contrast_01",
+      "category": "겉모습과 속마음",
+      "source_text": "도경은 차가워 보인다는 말을 자주 듣지만, 실은 누구보다 정이 많다.",
+      "checks": [
+        {"field": "personality_tags", "any_of": ["정 많", "정이 많", "다정", "따뜻", "온정"]},
+        {"field": "personality_tags", "none_of": ["차가", "냉정", "냉담", "쌀쌀"]}
+      ]
+    },
+    {
+      "id": "mixed_01",
+      "category": "복합 서술",
+      "source_text": "어릴 적 화재로 부모를 잃은 소방관 강현우는, 불길 속에 사람이 남아 있으면 명령을 어겨서라도 뛰어든다. 동료들은 그를 무모하다고 하지만, 정작 그는 매일 밤 악몽에 시달린다.",
+      "checks": [
+        {"field": "core_values", "any_of": ["생명", "인명", "구조", "사람", "구출"]},
+        {"field": "personality_tags", "any_of": ["무모", "용감", "대담", "저돌", "용기", "헌신", "희생"]},
+        {"field": "emotion_keywords", "any_of": ["트라우마", "악몽", "불안", "두려", "공포", "죄책", "괴로"]}
+      ]
+    }
+  ]
+}

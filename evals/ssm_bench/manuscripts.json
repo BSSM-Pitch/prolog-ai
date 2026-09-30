@@ -1,0 +1,43 @@
+{
+  "description": "SSM 구조 분석 측정 세트. 원고마다 run_ssm을 부르고 checks를 하나씩 채점한다(항목 = check). chapter_count는 원고의 장 수다. SSM 프롬프트 예시(서진, 공모전)와 겹치지 않게 썼다. 챕터 제목은 청킹이 인식하는 'N장' 형식이다.",
+  "manuscripts": [
+    {
+      "id": "seaside",
+      "chapter_count": 5,
+      "characters": [
+        {"character_id": "c_s1", "name": "시우"},
+        {"character_id": "c_s2", "name": "가람"}
+      ],
+      "text": "1장 이사\n시우는 부모님의 사업 실패로 바닷가 마을로 이사를 왔다. 전학 첫날, 시우는 아무와도 말하지 않았다.\n2장 만남\n방파제에서 그림을 그리던 시우에게 같은 반 가람이 말을 걸었다. 둘은 매일 방파제에서 만나 이야기를 나누는 사이가 되었다.\n3장 다툼\n가람이 시우의 스케치북을 친구들에게 몰래 보여 준 사실이 드러났다. 시우는 배신감에 가람에게 절교를 선언했다.\n4장 폭풍\n태풍이 마을을 덮친 밤, 가람이 방파제에 두고 온 시우의 스케치북을 찾으러 나갔다가 실종되었다. 시우는 어른들과 함께 폭풍 속으로 가람을 찾아 나섰고, 무너진 등대 아래에서 가람을 구해 냈다.\n5장 전시회\n가을 축제에서 시우의 그림이 전시되었다. 가람은 그림 앞에서 처음으로 진심으로 사과했고, 시우는 웃으며 사과를 받아 주었다.",
+      "checks": [
+        {"id": "seaside_valid", "category": "형식", "type": "valid_chapters"},
+        {"id": "seaside_order", "category": "형식", "type": "acts_order"},
+        {"id": "seaside_cover", "category": "형식", "type": "acts_cover"},
+        {"id": "seaside_ch3", "category": "사건 포착", "type": "node_in_chapter", "chapter": 3, "any_of": ["절교", "다툼", "배신", "스케치북"]},
+        {"id": "seaside_ch4", "category": "사건 포착", "type": "node_in_chapter", "chapter": 4, "any_of": ["실종", "구조", "구해", "구출", "폭풍", "태풍"]},
+        {"id": "seaside_ch5", "category": "사건 포착", "type": "node_in_chapter", "chapter": 5, "any_of": ["사과", "화해", "전시"]},
+        {"id": "seaside_climax", "category": "구조 판단", "type": "node_type_in_chapter", "node_type": "climax", "chapter": 4},
+        {"id": "seaside_char", "category": "캐릭터 연결", "type": "character_in_chapter", "chapter": 4, "character_id": "c_s2"}
+      ]
+    },
+    {
+      "id": "mystery",
+      "chapter_count": 4,
+      "characters": [
+        {"character_id": "c_m1", "name": "이서"},
+        {"character_id": "c_m2", "name": "문경"}
+      ],
+      "text": "1장 실종\n탐정 이서는 화가 문경이 사라졌다는 의뢰를 받았다. 문경의 작업실 책상 위에는 반쯤 탄 기차표가 남아 있었다.\n2장 추적\n이서는 기차표의 행선지인 산골 마을 운곡으로 향했다. 마을 사람들은 하나같이 문경을 본 적이 없다고 입을 모았다.\n3장 반전\n여관 주인의 딸이 문경의 그림을 가지고 있는 것을 본 이서는, 마을 사람들이 문경을 숨기고 있다는 사실을 알아챘다.\n4장 진실\n문경은 빚쟁이들을 피해 스스로 운곡에 숨어 있었다. 이서는 의뢰인이 바로 그 빚쟁이였다는 것을 알고 의뢰를 거절했다.",
+      "checks": [
+        {"id": "mystery_valid", "category": "형식", "type": "valid_chapters"},
+        {"id": "mystery_order", "category": "형식", "type": "acts_order"},
+        {"id": "mystery_cover", "category": "형식", "type": "acts_cover"},
+        {"id": "mystery_ch1", "category": "사건 포착", "type": "node_in_chapter", "chapter": 1, "any_of": ["실종", "의뢰", "사라"]},
+        {"id": "mystery_ch3", "category": "사건 포착", "type": "node_in_chapter", "chapter": 3, "any_of": ["숨기", "그림", "알아채", "반전"]},
+        {"id": "mystery_ch3_turn", "category": "구조 판단", "type": "node_type_in_chapter", "node_type": "turning_point", "chapter": 3},
+        {"id": "mystery_ch4", "category": "사건 포착", "type": "node_in_chapter", "chapter": 4, "any_of": ["빚", "숨어", "거절", "진실"]},
+        {"id": "mystery_char", "category": "캐릭터 연결", "type": "character_in_chapter", "chapter": 4, "character_id": "c_m2"}
+      ]
+    }
+  ]
+}
