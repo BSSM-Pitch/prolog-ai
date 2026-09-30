@@ -27,6 +27,8 @@ DEFAULT_MAX_RETRIES = 2  # 최초 시도 포함 최대 3회 시도
 # DeepSeek은 추론이 기본으로 켜져 있어 4096이면 추론만으로 한도를 채워 출력이 잘리는 일이 실제로 생겼다
 # (2026-09-29, REX 호출 2번). 보이는 출력은 수백~2천 토큰이라 한도만 넉넉히 둔다.
 MAX_OUTPUT_TOKENS = 16384
+# 추출·판정은 같은 입력에 같은 답이 나와야 하므로 무작위성을 낮춘다.
+TEMPERATURE = 0.0
 # 요청 시간 초과(408)·충돌(409)·속도 제한(429)과 5xx만 다시 시도한다. 인증 오류 등은 다시 해도 같다.
 _RETRYABLE_STATUS = {408, 409, 429}
 
@@ -89,6 +91,7 @@ def _call_real_llm(
             response = client.chat.completions.create(
                 model=model,
                 max_tokens=MAX_OUTPUT_TOKENS,
+                temperature=TEMPERATURE,
                 messages=[{"role": "user", "content": prompt}],
                 tools=[
                     {

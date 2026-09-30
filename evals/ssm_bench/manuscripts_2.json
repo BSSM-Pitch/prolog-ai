@@ -1,0 +1,46 @@
+{
+  "description": "SSM 검증용 세트(과적합 확인·난이도 상향). manuscripts.json보다 챕터가 많고, 한 장에 사건이 여러 개이며, 챕터 제목은 '제N장' 형식이다. 체크 종류는 manuscripts.json과 같다. 이 세트의 결과를 보고 프롬프트를 고치지 않는다.",
+  "manuscripts": [
+    {
+      "id": "rebellion",
+      "chapter_count": 6,
+      "characters": [
+        {"character_id": "c_a1", "name": "아린"},
+        {"character_id": "c_a2", "name": "루미"},
+        {"character_id": "c_a3", "name": "카엘"}
+      ],
+      "text": "제1장 징집\n변방 마을 대장장이의 딸 아린은 몸이 약한 오빠 대신 왕국군에 징집되었다. 훈련소에서 아린은 검술 교관 카엘에게 재능을 인정받았다. 같은 막사의 동기 루미는 매일 밤 등불 아래에서 몰래 편지를 썼다.\n제2장 첫 전투\n국경 요새에서 벌어진 첫 전투에서 아린의 부대는 절반을 잃었다. 아린은 다리를 다친 루미를 업고 요새로 돌아왔다. 전투가 끝난 뒤, 카엘은 적군이 아군의 이동 경로를 미리 알고 있었던 것 같다고 중얼거렸다.\n제3장 편지\n루미가 쓰던 편지가 적국으로 보내지고 있었다는 사실이 드러났다. 루미는 적국에 인질로 잡힌 동생을 살리려고 정보를 넘겼다며 울면서 고백했다. 아린은 한참을 고민한 끝에 루미를 고발하지 않기로 했다.\n제4장 배신자\n루미의 일이 군에 알려지자, 카엘은 아린을 공범으로 몰아 감옥에 가두었다. 감옥에서 아린은 카엘이야말로 적국과 손잡은 진짜 첩자였고, 루미의 편지를 이용해 자기 흔적을 덮어 왔다는 것을 알게 되었다.\n제5장 성문\n루미가 목숨을 걸고 감옥 열쇠를 훔쳐 아린을 풀어 주었다. 두 사람은 카엘이 오늘 밤 적군에게 성문을 열어 주기로 했다는 것을 알아냈다. 성문 앞에서 아린은 카엘과 맞섰고, 긴 싸움 끝에 그를 쓰러뜨려 성문을 지켜 냈다.\n제6장 새벽\n성은 무사했다. 루미의 동생은 포로 교환으로 돌아왔다. 아린은 왕이 내린 기사 작위를 거절하고 고향의 대장간으로 돌아갔다.",
+      "checks": [
+        {"id": "rebellion_valid", "category": "형식", "type": "valid_chapters"},
+        {"id": "rebellion_order", "category": "형식", "type": "acts_order"},
+        {"id": "rebellion_cover", "category": "형식", "type": "acts_cover"},
+        {"id": "rebellion_ch2", "category": "사건 포착", "type": "node_in_chapter", "chapter": 2, "any_of": ["전투", "요새"]},
+        {"id": "rebellion_ch3", "category": "사건 포착", "type": "node_in_chapter", "chapter": 3, "any_of": ["편지", "고백", "인질", "정보", "첩자", "고발"]},
+        {"id": "rebellion_ch4", "category": "사건 포착", "type": "node_in_chapter", "chapter": 4, "any_of": ["카엘", "첩자", "배신", "감옥", "누명", "공범"]},
+        {"id": "rebellion_ch4_turn", "category": "구조 판단", "type": "node_type_in_chapter", "node_type": "turning_point", "chapter": 4},
+        {"id": "rebellion_climax", "category": "구조 판단", "type": "node_type_in_chapter", "node_type": "climax", "chapter": 5},
+        {"id": "rebellion_ch5", "category": "사건 포착", "type": "node_in_chapter", "chapter": 5, "any_of": ["성문", "카엘", "싸움", "결투", "쓰러", "탈옥"]},
+        {"id": "rebellion_char", "category": "캐릭터 연결", "type": "character_in_chapter", "chapter": 5, "character_id": "c_a3"}
+      ]
+    },
+    {
+      "id": "contract",
+      "chapter_count": 4,
+      "characters": [
+        {"character_id": "c_r1", "name": "하윤"},
+        {"character_id": "c_r2", "name": "서준"}
+      ],
+      "text": "제1장 계약\n배우 지망생 하윤은 밀린 월세를 마련하려고 재벌 3세 서준의 '가짜 약혼녀' 계약서에 서명했다. 계약 기간은 석 달, 조건은 단 하나였다. 서로에게 진심이 되지 않을 것.\n제2장 파티\n약혼 발표 파티에서 하윤은 서준의 할머니에게 정체를 들킬 뻔했지만, 즉흥 연기로 위기를 넘겼다. 그날 밤 서준은 처음으로 하윤에게 고맙다고 말했다.\n제3장 오디션\n하윤은 꿈에 그리던 영화 오디션에 합격했지만, 촬영 날짜가 서준 가문의 약혼식 날과 겹쳤다. 서준은 말없이 계약서를 찢으며 오디션에 가라고 했다. 하윤은 그제야 자신이 서준을 좋아하게 되었다는 것을 깨달았다.\n제4장 무대\n영화 시사회 날, 객석 맨 앞줄에 서준이 앉아 있었다. 무대 인사를 마친 하윤은 마이크를 든 채 서준에게 걸어가, 이번에는 계약이 아닌 진짜 고백을 했다.",
+      "checks": [
+        {"id": "contract_valid", "category": "형식", "type": "valid_chapters"},
+        {"id": "contract_order", "category": "형식", "type": "acts_order"},
+        {"id": "contract_cover", "category": "형식", "type": "acts_cover"},
+        {"id": "contract_ch1", "category": "사건 포착", "type": "node_in_chapter", "chapter": 1, "any_of": ["계약", "약혼", "서명"]},
+        {"id": "contract_ch3", "category": "사건 포착", "type": "node_in_chapter", "chapter": 3, "any_of": ["오디션", "계약서", "찢", "깨달", "마음"]},
+        {"id": "contract_ch3_turn", "category": "구조 판단", "type": "node_type_in_chapter", "node_type": "turning_point", "chapter": 3},
+        {"id": "contract_ch4", "category": "사건 포착", "type": "node_in_chapter", "chapter": 4, "any_of": ["고백", "시사회", "무대"]},
+        {"id": "contract_char", "category": "캐릭터 연결", "type": "character_in_chapter", "chapter": 3, "character_id": "c_r2"}
+      ]
+    }
+  ]
+}

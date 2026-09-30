@@ -639,6 +639,13 @@ def test_scds_keyword_matches_across_different_particles():
     assert run_scds_rules({"character_ids": ["c1"], "content": "낮잠을 잤다"}, short)["data"]["status"] == "skipped"
 
 
+def test_scds_keyword_matches_regardless_of_spacing():
+    rules = [{"rule_id": "r", "description": "허락 없이 금서고 출입 금지", "violation_keywords": ["허락받지 않"]}]
+    # 조사("도")를 떼면 "허락 받지 않고"가 되어 띄어쓰기만 다르다.
+    event = {"character_ids": ["c1"], "content": "유나는 허락도 받지 않고 금서고에 숨어들었다."}
+    assert run_scds_rules(event, rules)["data"]["status"] == "queued"
+
+
 def test_run_ssm_does_not_let_acts_go_back_a_stage(llm_calls):
     def chunk(act_name):
         return {

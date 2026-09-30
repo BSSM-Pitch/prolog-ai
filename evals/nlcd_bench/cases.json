@@ -1,0 +1,237 @@
+{
+  "description": "NLCD 추출 측정 세트. 케이스마다 checks를 모두 통과해야 그 회차를 정답으로 센다. any_of: 해당 카테고리 값 중 하나라도 목록의 말을 포함(공백 무시)해야 한다. none_of: 해당 카테고리 값이 목록의 말을 포함하면 안 된다. empty: 해당 카테고리가 비어 있어야 한다. NLCD 프롬프트 예시(민지, 도현, 검은 코트)와 명세 예시(피터 파커)와 겹치지 않게 썼다.",
+  "cases": [
+    {
+      "id": "basic_01",
+      "category": "기본 추출",
+      "source_text": "은호는 말이 많고 장난기가 넘치지만, 가족을 지키는 일이라면 누구보다 진지해진다.",
+      "checks": [
+        {
+          "field": "personality_tags",
+          "any_of": [
+            "장난",
+            "수다",
+            "말이 많",
+            "쾌활",
+            "유쾌"
+          ]
+        },
+        {
+          "field": "core_values",
+          "any_of": [
+            "가족"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "basic_02",
+      "category": "기본 추출",
+      "source_text": "강준은 성격이 급해서 기다리는 걸 못 참고 일단 몸부터 움직인다.",
+      "checks": [
+        {
+          "field": "personality_tags",
+          "any_of": [
+            "급",
+            "성급",
+            "충동",
+            "참을성",
+            "행동파",
+            "조급"
+          ]
+        },
+        {
+          "field": "core_values",
+          "empty": true
+        }
+      ]
+    },
+    {
+      "id": "influence_01",
+      "category": "영향 관계",
+      "source_text": "태오는 어릴 적 자신을 거둬 준 대장장이 노인의 영향으로 성실함을 목숨처럼 여긴다.",
+      "checks": [
+        {
+          "field": "influence_relations",
+          "any_of": [
+            "대장장이",
+            "노인"
+          ]
+        },
+        {
+          "field": "core_values",
+          "any_of": [
+            "성실"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "influence_02",
+      "category": "영향 관계",
+      "source_text": "나래는 엄격한 아버지와 다정한 이모 사이에서 자라, 원칙을 중시하면서도 남의 사정을 잘 헤아린다.",
+      "checks": [
+        {
+          "field": "influence_relations",
+          "any_of": [
+            "아버지"
+          ]
+        },
+        {
+          "field": "influence_relations",
+          "any_of": [
+            "이모"
+          ]
+        },
+        {
+          "field": "core_values",
+          "any_of": [
+            "원칙"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "emotion_01",
+      "category": "감정 추론",
+      "source_text": "시험 결과 발표를 하루 앞둔 하진은 손톱을 물어뜯으며 밤새 뒤척였다.",
+      "checks": [
+        {
+          "field": "emotion_keywords",
+          "any_of": [
+            "불안",
+            "초조",
+            "긴장",
+            "걱정",
+            "두려"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "emotion_02",
+      "category": "감정 추론",
+      "source_text": "오랜 친구에게 배신당한 뒤로 세린은 누구의 연락에도 답하지 않는다.",
+      "checks": [
+        {
+          "field": "emotion_keywords",
+          "any_of": [
+            "상처",
+            "배신감",
+            "슬픔",
+            "불신",
+            "실망",
+            "분노",
+            "외로",
+            "환멸"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "emotion_03",
+      "category": "감정 추론",
+      "source_text": "용병 출신인 카이는 돈만 밝히는 척하지만, 아이들이 위험에 처하면 대가 없이 나선다. 요즘은 옛 동료를 잃은 슬픔에 잠겨 있다.",
+      "checks": [
+        {
+          "field": "core_values",
+          "any_of": [
+            "아이",
+            "약자",
+            "보호",
+            "생명"
+          ]
+        },
+        {
+          "field": "emotion_keywords",
+          "any_of": [
+            "슬픔",
+            "상실",
+            "그리움",
+            "애도",
+            "비통"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "no_emotion_01",
+      "category": "해당 없음",
+      "source_text": "민규는 매일 새벽 다섯 시에 일어나 정해진 순서대로 하루를 보낸다.",
+      "checks": [
+        {
+          "field": "personality_tags",
+          "any_of": [
+            "규칙",
+            "계획",
+            "부지런",
+            "성실",
+            "꼼꼼",
+            "규율",
+            "철저"
+          ]
+        },
+        {
+          "field": "emotion_keywords",
+          "empty": true
+        }
+      ]
+    },
+    {
+      "id": "no_info_01",
+      "category": "해당 없음",
+      "source_text": "그는 은발에 푸른 눈을 가졌고 늘 회색 망토를 두른다.",
+      "checks": [
+        {
+          "field": "personality_tags",
+          "empty": true
+        },
+        {
+          "field": "core_values",
+          "empty": true
+        },
+        {
+          "field": "influence_relations",
+          "empty": true
+        },
+        {
+          "field": "emotion_keywords",
+          "empty": true
+        }
+      ]
+    },
+    {
+      "id": "boundary_01",
+      "category": "카테고리 경계",
+      "source_text": "소율은 어떤 상황에서도 거짓말을 하지 않는다는 원칙을 지킨다.",
+      "checks": [
+        {
+          "field": "core_values",
+          "any_of": [
+            "정직",
+            "거짓",
+            "진실",
+            "솔직"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "boundary_02",
+      "category": "카테고리 경계",
+      "source_text": "리안은 겁이 없는 게 아니라, 두려움을 남에게 들키지 않는 데 익숙할 뿐이다.",
+      "checks": [
+        {
+          "field": "personality_tags",
+          "none_of": [
+            "겁이 없",
+            "용감",
+            "대담",
+            "두려움이 없",
+            "겁 없"
+          ]
+        }
+      ]
+    }
+  ]
+}

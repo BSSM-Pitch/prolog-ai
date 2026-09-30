@@ -1,0 +1,62 @@
+{
+  "description": "SCDS AI 분석 판정 측정용 사건 세트. 모든 사건에 위반 키워드가 들어 있어 룰 검출에서 반드시 후보가 생기고 AI 분석까지 간다. expected_conflict는 AI가 그 후보를 충돌로 판단해야 하는지(정답)다.",
+  "world_rules": [
+    {
+      "rule_id": "wr_001",
+      "title": "밤의 결계",
+      "description": "해가 진 뒤에는 누구도 성 밖으로 나갈 수 없다",
+      "violation_keywords": ["성 밖으로 나", "성문을 넘", "성을 빠져"]
+    },
+    {
+      "rule_id": "wr_002",
+      "title": "이름의 금기",
+      "description": "죽은 자의 이름을 소리 내어 부르면 저주를 받는다",
+      "violation_keywords": ["이름을 불", "이름을 부르", "이름을 외", "이름을 소리"]
+    },
+    {
+      "rule_id": "wr_003",
+      "title": "치유의 대가",
+      "description": "치유 마법을 쓰면 시전자가 같은 만큼의 상처를 입는다",
+      "violation_keywords": ["상처 없이 치유", "대가 없이 치유", "아무 대가 없이"]
+    }
+  ],
+  "characters": [
+    {
+      "character_id": "c_01",
+      "name": "서연",
+      "personality_tags": ["신중함"],
+      "core_values": ["가족 보호"]
+    },
+    {
+      "character_id": "c_02",
+      "name": "도겸",
+      "personality_tags": ["충동적"],
+      "core_values": ["동료 보호"]
+    }
+  ],
+  "events": [
+    {"id": "clear_01", "category": "명백한 위반", "rule_id": "wr_001", "character_ids": ["c_02"], "content": "해가 지자 도겸은 몰래 성문을 넘어 숲으로 달려갔다.", "expected_conflict": true},
+    {"id": "clear_02", "category": "명백한 위반", "rule_id": "wr_001", "character_ids": ["c_01"], "content": "서연은 한밤중에 성 밖으로 나가 약초를 캐 왔다.", "expected_conflict": true},
+    {"id": "clear_03", "category": "명백한 위반", "rule_id": "wr_002", "character_ids": ["c_02"], "content": "도겸은 무덤 앞에서 죽은 스승의 이름을 불렀지만 아무 일도 일어나지 않았다.", "expected_conflict": true},
+    {"id": "clear_04", "category": "명백한 위반", "rule_id": "wr_003", "character_ids": ["c_01"], "content": "서연은 부상병 열 명을 아무 대가 없이 치유하고 멀쩡히 걸어 나왔다.", "expected_conflict": true},
+    {"id": "clear_05", "category": "명백한 위반", "rule_id": "wr_003", "character_ids": ["c_02"], "content": "도겸은 자신은 상처 없이 치유 마법으로 친구의 부러진 다리를 고쳤다.", "expected_conflict": true},
+
+    {"id": "subtle_01", "category": "헷갈리는 위반", "rule_id": "wr_001", "character_ids": ["c_01"], "content": "해가 완전히 저문 것을 확인하고서야 서연은 조용히 성 밖으로 나섰다.", "expected_conflict": true, "note": "조심스러운 행동이라 위반처럼 안 보일 수 있다"},
+    {"id": "subtle_02", "category": "헷갈리는 위반", "rule_id": "wr_001", "character_ids": ["c_02"], "content": "해가 진 지 한참 지났지만 도겸은 아직 저녁일 뿐이라고 우기며 성문을 넘었다.", "expected_conflict": true, "note": "인물이 규칙을 부정하는 말을 해도 행동은 위반"},
+    {"id": "subtle_03", "category": "헷갈리는 위반", "rule_id": "wr_002", "character_ids": ["c_01"], "content": "서연은 편지 끝에 죽은 오빠의 이름을 적고, 그 이름을 소리 내어 천천히 읽었다.", "expected_conflict": true, "note": "'쓴다'와 '읽는다'가 섞여 있다"},
+    {"id": "subtle_04", "category": "헷갈리는 위반", "rule_id": "wr_003", "character_ids": ["c_02"], "content": "치유를 마친 도겸의 팔에는 긁힌 자국 하나 없었다. 그는 아무 대가 없이 동료를 살려 낸 셈이었다.", "expected_conflict": true, "note": "위반이 결과 묘사로만 드러난다"},
+    {"id": "subtle_05", "category": "헷갈리는 위반", "rule_id": "wr_001", "character_ids": ["c_01"], "content": "자정 무렵, 서연은 아무도 모르는 비밀 통로로 성을 빠져나갔다.", "expected_conflict": true, "note": "'해가 진 뒤'라는 말 없이 시간(자정)만 나온다"},
+
+    {"id": "keep_01", "category": "규칙을 지키는 장면", "rule_id": "wr_001", "character_ids": ["c_01"], "content": "서연은 해가 지기 전에 서둘러 성 밖으로 나가 약초를 캐고, 노을이 지기 전에 돌아왔다.", "expected_conflict": false},
+    {"id": "keep_02", "category": "규칙을 지키는 장면", "rule_id": "wr_003", "character_ids": ["c_02"], "content": "도겸은 치유 마법의 대가로 친구와 똑같은 상처를 입었다. 아무 대가 없이 치유할 수는 없었다.", "expected_conflict": false},
+    {"id": "keep_03", "category": "규칙을 지키는 장면", "rule_id": "wr_002", "character_ids": ["c_01"], "content": "서연은 죽은 스승의 이름을 불러야 할 때마다 입 밖에 내지 않고 속으로만 떠올렸다.", "expected_conflict": false},
+    {"id": "keep_04", "category": "규칙을 지키는 장면", "rule_id": "wr_001", "character_ids": ["c_02"], "content": "아침 해가 뜨자마자 도겸은 성문을 넘어 사냥을 나갔다.", "expected_conflict": false},
+    {"id": "keep_05", "category": "규칙을 지키는 장면", "rule_id": "wr_002", "character_ids": ["c_01"], "content": "서연은 살아 있는 동생의 이름을 외치며 광장으로 달려갔다.", "expected_conflict": false, "note": "금기는 죽은 자의 이름에만 해당한다"},
+
+    {"id": "neg_01", "category": "부정문", "rule_id": "wr_001", "character_ids": ["c_02"], "content": "도겸은 해가 진 뒤 성 밖으로 나가고 싶었지만 끝내 성문 앞에서 발길을 돌렸다.", "expected_conflict": false},
+    {"id": "neg_02", "category": "부정문", "rule_id": "wr_002", "character_ids": ["c_01"], "content": "서연은 죽은 어머니의 이름을 부르려다 입을 다물었다.", "expected_conflict": false},
+    {"id": "neg_03", "category": "부정문", "rule_id": "wr_003", "character_ids": ["c_02"], "content": "대가 없이 치유하는 법은 없다는 걸 알기에, 도겸은 기꺼이 상처를 떠안았다.", "expected_conflict": false},
+    {"id": "neg_04", "category": "부정문", "rule_id": "wr_001", "character_ids": ["c_01"], "content": "밤이 되었지만 서연은 성 밖으로 나가지 않고 창가에서 기다렸다.", "expected_conflict": false},
+    {"id": "neg_05", "category": "부정문", "rule_id": "wr_002", "character_ids": ["c_02"], "content": "도겸은 죽은 형의 이름을 소리 내어 부른 적이 한 번도 없다.", "expected_conflict": false}
+  ]
+}
