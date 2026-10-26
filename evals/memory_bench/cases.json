@@ -1,0 +1,40 @@
+[
+  {
+    "name": "help_refusal_with_relationship_change",
+    "characters": [
+      {"character_id": "seojin", "name": "서진"},
+      {"character_id": "younger", "name": "서하"}
+    ],
+    "scenes": [
+      {"scene_id": "s7", "revision": "1", "order": 7, "text": "서하가 무거운 상자를 같이 들겠다고 했다. 서진은 소매를 잡아당겼다. ‘됐어. 이 정도는 혼자 해.’ 서진이 상자를 끌어안았다."},
+      {"scene_id": "s31", "revision": "1", "order": 31, "text": "서하는 서진의 손에서 피가 나는 것을 보고 붕대를 꺼냈다. 서진은 손목을 소매 속으로 감췄다. ‘별거 아니야.’ 서진은 저녁 메뉴를 물었다."},
+      {"scene_id": "s68", "revision": "1", "order": 68, "text": "서진은 오래 망설이다 서하에게 다친 손을 내밀었다. ‘오늘은 네가 감아 줘. 부탁해.’ 서하는 말없이 붕대를 펼쳤다."}
+    ],
+    "expected_observations": [
+      {"scene_id": "s7", "character_id": "seojin", "kind": "action", "anchor": "소매를 잡아당겼다"},
+      {"scene_id": "s7", "character_id": "seojin", "kind": "speech", "anchor": "됐어"},
+      {"scene_id": "s31", "character_id": "seojin", "kind": "action", "anchor": "손목을 소매 속으로 감췄다"},
+      {"scene_id": "s31", "character_id": "seojin", "kind": "speech", "anchor": "별거 아니야"},
+      {"scene_id": "s68", "character_id": "seojin", "kind": "speech", "anchor": "부탁해"}
+    ],
+    "expected_patterns": [
+      {"character_id": "seojin", "support_scenes": ["s7", "s31"], "counter_scenes": ["s68"]}
+    ]
+  },
+  {
+    "name": "ambiguous_speaker_and_isolated_detail",
+    "characters": [
+      {"character_id": "min", "name": "민"},
+      {"character_id": "yun", "name": "윤"}
+    ],
+    "scenes": [
+      {"scene_id": "room", "revision": "1", "order": 1, "text": "민과 윤이 불 꺼진 방에 있었다. 어둠 속에서 ‘괜찮아’라는 목소리가 들렸다. 누가 말했는지는 알 수 없었다. 민은 주머니 속 동전의 가장자리를 엄지로 문질렀다."}
+    ],
+    "expected_observations": [
+      {"scene_id": "room", "character_id": "min", "kind": "action", "anchor": "동전의 가장자리를 엄지로 문질렀다"}
+    ],
+    "forbidden_certain_attribution": [{"scene_id": "room", "anchor": "괜찮아"}],
+    "expected_patterns": [],
+    "expect_no_patterns": true
+  }
+]

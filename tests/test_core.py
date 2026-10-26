@@ -79,7 +79,7 @@ def test_every_spec_code_has_http_status_and_internal_codes_do_not():
 
 
 def test_module_ai_errors_cover_all_modules():
-    assert set(MODULE_AI_ERRORS) == set(MODULES)
+    assert set(MODULE_AI_ERRORS) == set(MODULES) | {"memory"}
     for codes in MODULE_AI_ERRORS.values():
         assert HTTP_STATUS[codes.failed] == 502
         assert HTTP_STATUS[codes.timeout] == 503

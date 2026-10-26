@@ -57,6 +57,14 @@ def test_main_rejects_real_without_api_key(monkeypatch):
     assert main(["--real"]) == 1
 
 
+@pytest.mark.parametrize("real", [False, True])
+def test_module_failure_never_passes_evaluation(monkeypatch, real):
+    for module in FUNCTIONS:
+        monkeypatch.setitem(FUNCTIONS, module, lambda **_: {"error": {"code": "AI_ANALYSIS_FAILED"}})
+    for case in load_cases():
+        assert run_case(case, real=real, exact=True)[0] is False
+
+
 def test_judge_skips_llm_for_exact_matches(monkeypatch):
     from evals import judge
 

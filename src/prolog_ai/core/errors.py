@@ -66,6 +66,7 @@ MODULE_AI_ERRORS: dict[str, AIErrorCodes] = {
     "aiq": AIErrorCodes(ErrorCode.AI_RESPONSE_FAILED, ErrorCode.AI_RESPONSE_TIMEOUT),
     "scds": AIErrorCodes(ErrorCode.AI_ANALYSIS_FAILED, ErrorCode.AI_ANALYSIS_TIMEOUT),
     "ssm": AIErrorCodes(ErrorCode.AI_ANALYSIS_FAILED, ErrorCode.AI_ANALYSIS_TIMEOUT),
+    "memory": AIErrorCodes(ErrorCode.AI_ANALYSIS_FAILED, ErrorCode.AI_ANALYSIS_TIMEOUT),
 }
 
 

@@ -11,6 +11,8 @@ from collections.abc import Callable, Iterable
 from concurrent.futures import ThreadPoolExecutor
 from typing import Any
 
+from prolog_ai.core.llm import LLMFailedError, get_llm_config
+
 UNANSWERABLE_PHRASES = [
     "확인되지 않",
     "확인할 수 없",
@@ -39,8 +41,10 @@ def check_real_env() -> bool:
     if os.environ.get("USE_FAKE_LLM") == "1":
         print("USE_FAKE_LLM=1이면 가짜 응답만 나옵니다. 비우고 다시 실행하세요.")
         return False
-    if not os.environ.get("OPENROUTER_API_KEY"):
-        print("OPENROUTER_API_KEY가 없습니다. .env를 셸에 불러오세요: set -a; source .env; set +a")
+    try:
+        get_llm_config().require_api_key()
+    except LLMFailedError as exc:
+        print(str(exc))
         return False
     return True
 

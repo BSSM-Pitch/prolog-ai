@@ -18,6 +18,7 @@ from pathlib import Path
 from typing import Any
 
 from prolog_ai import run_aiq, run_nlcd, run_rex, run_scds, run_ssm
+from prolog_ai.core.llm import LLMFailedError, get_llm_config
 
 try:
     from evals.judge import judge_field
@@ -68,6 +69,9 @@ def run_case(
     if set(result) not in ({"data", "meta"}, {"error"}):
         return False, f"응답 형식이 아님: 키={sorted(result)}"
 
+    if "error" in result:
+        return False, f"모듈 실행 실패: {result['error'].get('code', 'UNKNOWN')}"
+
     if "expected_status" in case:
         actual = result.get("data", {}).get("status")
         if actual != case["expected_status"]:
@@ -96,7 +100,7 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--module", choices=sorted(FUNCTIONS), help="이 모듈 케이스만 실행")
     parser.add_argument(
-        "--real", action="store_true", help="실제 LLM API(OpenRouter)로 호출해 expected_values까지 채점"
+        "--real", action="store_true", help="선택한 제공사의 실제 LLM API로 expected_values까지 채점"
     )
     parser.add_argument("--exact", action="store_true", help="--real 채점을 글자 비교로만 한다")
     parser.add_argument("--show", action="store_true", help="응답과 판단 이유를 출력한다")
@@ -104,8 +108,10 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.real:
         os.environ.pop("USE_FAKE_LLM", None)
-        if not os.environ.get("OPENROUTER_API_KEY"):
-            print("OPENROUTER_API_KEY가 없어 --real을 쓸 수 없습니다.", file=sys.stderr)
+        try:
+            get_llm_config().require_api_key()
+        except LLMFailedError as exc:
+            print(str(exc), file=sys.stderr)
             return 1
     else:
         os.environ["USE_FAKE_LLM"] = "1"
