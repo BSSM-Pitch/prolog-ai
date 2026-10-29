@@ -57,6 +57,7 @@ def run_module(
     evidence_text: str | None = None,
     evidence_fields: list[str] = (),
     timeout: float | None = None,
+    max_retries: int | None = None,
 ) -> dict[str, Any]:
     ai_errors = MODULE_AI_ERRORS[module]
 
@@ -66,6 +67,8 @@ def run_module(
         try:
             prompt = build_prompt(validated)
             llm_options = {} if timeout is None else {"timeout": timeout}
+            if max_retries is not None:
+                llm_options["max_retries"] = max_retries
             raw_output = call_llm(prompt, schema=output_schema, **llm_options)
         except LLMTimeoutError as exc:
             return make_error(ai_errors.timeout, str(exc))

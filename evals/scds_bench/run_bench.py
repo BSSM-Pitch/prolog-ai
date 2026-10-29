@@ -14,12 +14,14 @@ AI 분석(run_scds_analysis)을 --repeat번(기본 5번) 받는다. 모든 답�
 
 import argparse
 import json
-import os
 import sys
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 from prolog_ai import run_scds_analysis, run_scds_rules
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+from evals.bench_common import check_real_env
 
 DATA_DIR = Path(__file__).parent
 DEFAULT_DATA = "events.json"
@@ -43,11 +45,7 @@ def main() -> int:
     parser.add_argument("--data", help="측정 데이터 파일 이름 (이 폴더). 검증용 세트는 events_2.json")
     args = parser.parse_args()
 
-    if os.environ.get("USE_FAKE_LLM") == "1":
-        print("USE_FAKE_LLM=1이면 가짜 응답만 나옵니다. 비우고 다시 실행하세요.")
-        return 1
-    if not os.environ.get("OPENROUTER_API_KEY"):
-        print("OPENROUTER_API_KEY가 없습니다. .env를 셸에 불러오세요: set -a; source .env; set +a")
+    if not check_real_env():
         return 1
 
     bench = json.loads((DATA_DIR / (args.data or DEFAULT_DATA)).read_text(encoding="utf-8"))

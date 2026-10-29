@@ -2,6 +2,15 @@
 
 Prolog 서비스의 AI 모듈만 담는 파이썬 패키지입니다. 백엔드(FastAPI)가 이 패키지를 설치해 함수를 호출합니다.
 
+0.1.0부터 장편의 작은 디테일을 원문 근거와 함께 보존하는 **인물 기억**을 선택적으로 사용할 수 있다.
+`run_character_memory`로 관찰·패턴·잠정 해석 가설을 만들고, `query_character_memory`로 검색하거나
+`run_aiq(..., memory=...)`, `run_scds(..., memory=...)`에 연결한다. 원고 수정·삭제, 호출 예산과
+중단 후 재개, SQLite 저장, 반례와 독서 시점 제한을 지원한다.
+`run_character_reading`은 반복되지 않은 장면도 인지·비의도적 반응·선택으로 구분하고,
+초안 작성 후 원문을 다시 읽는 별도 호출로 답변을 검토·수정한다. 기억을 사용하는 AIQ에는
+이 정독·검토 단계가 기본 적용된다.
+입력 형식·사용 예제·현재 한계는 [인물 기억 안내](docs/character-memory.md)를 본다.
+
 ## 설치 방법
 
 ```bash
@@ -33,9 +42,54 @@ set -a; source .env; set +a
 
 | 이름 | 설명 |
 | --- | --- |
-| `OPENROUTER_API_KEY` | OpenRouter API 키 (`sk-or-v1-…`). LLM은 OpenRouter를 거쳐 DeepSeek 모델을 부른다. 비어 있으면 API를 부르지 않고 `AI_*_FAILED`로 반환한다(다른 키를 대신 보내지 않는다) |
-| `PROLOG_AI_MODEL` | 호출할 OpenRouter 모델 이름. 비우면 `deepseek/deepseek-v4-flash` |
+| `PROLOG_AI_PROVIDER` | `nvidia`(기본) 또는 `openrouter`. API 주소와 사용할 키를 함께 선택한다 |
+| `OPENROUTER_API_KEY` | OpenRouter 선택 시 사용할 키. 다른 제공사의 키로 대체하지 않는다 |
+| `NVIDIA_API_KEY` | NVIDIA 선택 시 사용할 키. `https://integrate.api.nvidia.com/v1`에만 보낸다 |
+| `PROLOG_AI_MODEL` | 선택한 제공사의 모델 ID. 비우면 NVIDIA는 `z-ai/glm-5.3-flash`, OpenRouter는 `deepseek/deepseek-v4-flash` |
+| `PROLOG_AI_REASONING_EFFORT` | NVIDIA GLM 5.3 Flash 추론 예산: `low`(기본), `high`, `max`. 다른 모델에는 보내지 않음 |
 | `USE_FAKE_LLM` | 개발·테스트 전용. 운영 환경에는 넣지 않는다. 값이 정확히 `1`이면 API를 부르지 않고 스키마에 맞는 가짜 응답(빈 배열·빈 문자열)을 돌려준다. `true` 등 다른 값은 실제 호출로 처리된다 |
+
+NVIDIA GLM 5.3 Flash로 인물 기억을 실제 평가하려면 `NVIDIA_API_KEY`를 환경변수에 설정한 뒤 실행한다.
+키는 보고서에 포함하지 않는다. 기존 `.env`의 모델 값을 그대로 쓰지 않도록 모델도 지정한다.
+
+```bash
+export PROLOG_AI_PROVIDER=nvidia
+export PROLOG_AI_MODEL=z-ai/glm-5.3-flash
+export PROLOG_AI_REASONING_EFFORT=low
+python -m evals.memory_bench.run_bench --real --output /tmp/glm-memory.json
+```
+
+[NVIDIA API 명세](https://docs.api.nvidia.com/nim/reference/z-ai-glm-5-3-flash)의
+강제 함수 호출로 JSON을 받고 Pydantic으로 검증한다. 추론 토큰을 포함한 출력 한도는 16,384다.
+GLM은 NVIDIA 예제의 `temperature=0.5`, `top_p=1.0`과 명세의 `reasoning_effort=low`,
+`clear_thinking=true`를 사용한다. NVIDIA 응답은 스트리밍으로 조립하며 추론 원문은 저장하지 않는다.
+출력 잘림·완료 신호 누락은 실패로 처리한다. SDK 읽기 timeout과 청크 수신 시 경과 시간 검사를
+함께 사용하므로 네트워크 대기 중에는 읽기 timeout이 적용된다.
+Step 5를 명시적으로 선택하면 기존 `temperature=1.0`, `top_p=0.95`를 사용한다.
+제공사/모델/추론 설정이 바뀌면 이전 인물 기억의 분석 캐시는 재사용하지 않는다.
+모델 변경만으로 API의 장기 안정성이나 문학적 이해력이 보장되는 것은 아니다.
+
+### 로컬 장편 파일로 전체 문맥 평가
+
+`evals.novel_bench.run_bench`는 `제N장 제목` 형식의 UTF-8 원고 **전체**와 질문을
+한 요청에 보내는 실제 API 평가다. `run_character_memory`의 장면별 기억 구축과는 별도다.
+질문 JSON은 `[{"question_id": "habit", "question": "인물의 반복 행동과 변화를 설명하라."}]`
+형식이다. 다른 필드는 모델에 보내지 않으므로 평가 기준을 정답으로 유출하지 않는다.
+
+```bash
+python -m evals.novel_bench.run_bench \
+  --manuscript /path/to/manuscript.txt \
+  --questions /path/to/questions.json \
+  --output-dir /path/outside/repository/novel-evaluation \
+  --timeout 480 --deadline 900 --max-tokens 32768
+```
+
+스트리밍으로 수신하고 완료 답변의 장 번호·인용을 원본 파일과 대조한다. 원본 해시,
+원문 오프셋·줄 번호, 응답 시간, 제공사가 반환한 usage와 실패 사유를 남긴다.
+질문 누락·중복이나 잘못된 인용은 기계 검증 실패로 처리한다. 인용이 정확해도 해석이
+맞다는 보장은 없으므로 의미 검토는 별도다. `--reasoning-effort`는 제공사가 해당 옵션을
+지원할 때만 사용하며, 실제 적용 여부를 응답만으로 확정하지 않는다.
+원고 인용이 결과에 포함되므로 출력 폴더는 공개 저장소 밖에 둔다.
 
 ## 공개 함수
 
@@ -43,6 +97,8 @@ set -a; source .env; set +a
 
 모든 함수는 **동기 함수**이고, 어떤 입력·오류에도 예외를 던지지 않고 아래 응답 형식 중 하나로 반환한다.
 작업 생성·폴링(비동기)과 저장은 백엔드가 맡는다.
+이 계약은 `run_*`와 `query_character_memory`에 적용한다. 선택적 로컬 저장소 `MemoryStore`는
+파일/DB 오류와 동시 갱신 충돌을 예외로 알린다.
 
 | 함수 | 입력 | 성공 시 `data` |
 | --- | --- | --- |
@@ -171,6 +227,11 @@ SCDS 충돌 검사(ConflictCheck, SCDS 2.5)는 백엔드 `ops.jobs`의 `conflict
 사건 저장 요청(SCDS 4.6) 안에서 `run_scds_rules`를 동기로 부르고, 결과 `data.status`(`skipped` 또는 `queued`)와 `rule_result`로 작업을 만든다. `queued`면 AI 워커가 `running`으로 바꾸고 `run_scds_analysis`를 부른 뒤 `completed`/`failed`로 끝낸다.
 
 AI 호출 한 번의 시간 제한은 NLCD 30초, REX·AIQ·SCDS·SSM 90초다(SSM은 챕터마다 한 번씩). AI 재시도는 패키지 안에서 최대 2회 한다(시간 초과·연결 오류·408·409·429·5xx만. 인증 오류 등은 바로 실패). 408로 끝나면 `AI_*_TIMEOUT`이다. OpenRouter에는 도구 호출을 지원하는 제공사로만 보내도록 요청한다. 사용자가 누르는 재시도 API는 같은 함수를 다시 호출하면 된다.
+인물 기억 구축은 호출당 180초·최대 1회 재시도다. `run_character_reading`과 기억 AIQ의
+정독 경로는 초안·검토 두 단계이며, 긴 원고에는 검색 계획 호출을 한 번 추가한다.
+각 호출은 180초 제한을 사용하고 자동 재시도 없이 체크포인트로 재개한다. NVIDIA
+스트리밍은 읽기 대기 제한과 청크 수신 시 경과 시간 제한을 함께 적용하므로 이 값은
+함수 전체의 엄격한 실행 기한이 아니다. 워커의 전체 작업 기한은 별도로 설정한다.
 
 인수인계 요약과 알려진 한계는 `docs/handoff.md`, 미해결 문제는 `docs/specs/claude/WARN.md`에 있다.
 

@@ -25,6 +25,7 @@ from prolog_ai.core.guard import expect_list_of, expect_text, expect_type, publi
 from prolog_ai.core.mapping import map_confirmed_character_to_scds
 from prolog_ai.core.runner import InputValidationError, make_status_response, run_module
 from prolog_ai.core.status import RunStatus
+from prolog_ai.memory.review import prepare_review, review_prepared
 from prolog_ai.modules.scds.prompt import build_prompt
 from prolog_ai.modules.scds.rules import detect_conflict_candidates
 from prolog_ai.modules.scds.schema import SCDSOutput
@@ -179,6 +180,28 @@ def _analyze(
     )
 
 
+def _prepare_memory_review(event, memory, as_of_order):
+    if memory is None:
+        if as_of_order is not None:
+            raise InputValidationError("as_of_order에는 memory가 필요합니다.")
+        return None
+    return prepare_review(event, memory, as_of_order)
+
+
+def _with_memory_review(result, prepared):
+    if prepared is None or "error" in result:
+        return result
+    review = review_prepared(prepared)
+    if "error" in review:
+        review["error"]["details"]["rule_result"] = result["data"]["rule_result"]
+        return review
+    result["data"]["character_review"] = review["data"]
+    result["data"]["status"] = RunStatus.COMPLETED.value
+    result["data"].setdefault("conflicts", [])
+    result["meta"].update(review["meta"])
+    return result
+
+
 @public_api("scds", unexpected_code=ErrorCode.RULE_ENGINE_ERROR)
 def run_scds_rules(
     event: dict[str, Any],
@@ -200,20 +223,26 @@ def run_scds_analysis(
     event: dict[str, Any],
     rule_result: dict[str, Any],
     characters: list[dict[str, Any]] | None = None,
+    *,
+    memory: dict | None = None,
+    as_of_order: int | None = None,
 ) -> dict[str, Any]:
     """run_scds_rules가 돌려준 rule_result로 AI 분석만 한다. 재시도(SCDS 4.8)도 이 함수를 다시 부른다.
 
-    후보가 없는 rule_result(skipped)를 받으면 LLM을 부르지 않고 그 상태를 그대로 돌려준다.
+    후보가 없으면 세계관 AI 분석을 생략한다. memory가 있으면 별도 인물 검토를 수행한다.
     """
     characters = [] if characters is None else characters
     _validate_event(event)
     _validate_rule_result(rule_result)
     _validate_characters(characters)
     _validate_rule_result_matches_event(rule_result, event)
+    prepared = _prepare_memory_review(event, memory, as_of_order)
 
     if rule_result["skipped"] or not rule_result["has_candidate"]:
-        return _rule_status_response(rule_result)
-    return _analyze(event, rule_result, _character_settings(event, characters))
+        result = _rule_status_response(rule_result)
+    else:
+        result = _analyze(event, rule_result, _character_settings(event, characters))
+    return _with_memory_review(result, prepared)
 
 
 @public_api("scds", unexpected_code=ErrorCode.RULE_ENGINE_ERROR)
@@ -221,15 +250,21 @@ def run_scds(
     event: dict[str, Any],
     world_rules: list[dict[str, Any]],
     characters: list[dict[str, Any]] | None = None,
+    *,
+    memory: dict | None = None,
+    as_of_order: int | None = None,
 ) -> dict[str, Any]:
-    """룰 검출과 AI 분석을 한 번에 한다. 후보가 없으면 LLM을 부르지 않는다."""
+    """룰 검출과 AI 분석을 한다. memory가 있으면 키워드 후보와 별개로 인물을 검토한다."""
     characters = [] if characters is None else characters
     _validate_event(event)
     _validate_world_rules(world_rules)
     _validate_characters(characters)
 
+    prepared = _prepare_memory_review(event, memory, as_of_order)
     character_settings = _character_settings(event, characters)
     rule_result = detect_conflict_candidates(event, world_rules, character_settings)
     if rule_result["skipped"] or not rule_result["has_candidate"]:
-        return _rule_status_response(rule_result)
-    return _analyze(event, rule_result, character_settings)
+        result = _rule_status_response(rule_result)
+    else:
+        result = _analyze(event, rule_result, character_settings)
+    return _with_memory_review(result, prepared)
