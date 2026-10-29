@@ -89,7 +89,7 @@ jobs:
               "sudo sed -i \"/^NVIDIA_API_KEY=/d;/^PROLOG_AI_PROVIDER=/d;/^PROLOG_AI_MODEL=/d;/^PROLOG_AI_REASONING_EFFORT=/d\" /opt/prolog/.env.production",
               "printf \"NVIDIA_API_KEY=%s\\nPROLOG_AI_PROVIDER=nvidia\\nPROLOG_AI_MODEL=z-ai/glm-5.3-flash\\nPROLOG_AI_REASONING_EFFORT=low\\n\" \"$KEY\" | sudo tee -a /opt/prolog/.env.production >/dev/null",
               "unset KEY",
-              "docker run --rm --volume /opt/prolog:/workspace --workdir /workspace ghcr.io/astral-sh/uv:python3.12-bookworm-slim uv lock --upgrade-package prolog-ai",
+              "docker run --rm --volume /opt/prolog:/workspace --workdir /workspace prolog-backend:prod uv lock --upgrade-package prolog-ai",
               ("grep -F " + $sha + " uv.lock >/dev/null"),
               "docker compose -p prolog -f compose.prod.yml config --quiet",
               "docker compose -p prolog -f compose.prod.yml build api",
