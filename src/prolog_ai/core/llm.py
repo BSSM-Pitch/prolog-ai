@@ -1,4 +1,4 @@
-"""LLM API 호출 (OpenRouter 또는 NVIDIA의 OpenAI 호환 API).
+"""LLM API 호출 (OpenAI, OpenRouter, NVIDIA).
 
 호출은 call_llm() 한 함수로 모은다. PROLOG_AI_PROVIDER로 제공사를 고르고,
 PROLOG_AI_MODEL을 비우면 제공사별 기본 모델을 쓴다. 각 제공사의 키만 사용한다.
@@ -19,6 +19,11 @@ from typing import Any
 
 from pydantic import BaseModel
 
+from prolog_ai.core.request_policy import current_policy
+
+OPENAI_BASE_URL = "https://api.openai.com/v1"
+OPENAI_ANALYSIS_MODEL = "gpt-6.1-terra"
+OPENAI_QUERY_MODEL = "gpt-6-luna"
 OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
 NVIDIA_BASE_URL = "https://integrate.api.nvidia.com/v1"
 DEFAULT_MODEL = "deepseek/deepseek-v4-flash"
@@ -70,19 +75,28 @@ class LLMConfig:
         return key
 
 
-def get_llm_config() -> LLMConfig:
+def get_llm_config(*, simple_query: bool = False) -> LLMConfig:
     """키를 포함하지 않는 설정. 실행 경로와 기억 캐시의 제공사/모델을 일치시킨다."""
     provider = os.environ.get("PROLOG_AI_PROVIDER", "").strip().lower() or "nvidia"
     providers = {
+        "openai": (OPENAI_BASE_URL, OPENAI_ANALYSIS_MODEL, "OPENAI_API_KEY"),
         "openrouter": (OPENROUTER_BASE_URL, DEFAULT_MODEL, "OPENROUTER_API_KEY"),
         "nvidia": (NVIDIA_BASE_URL, NVIDIA_DEFAULT_MODEL, "NVIDIA_API_KEY"),
     }
     if provider not in providers:
-        raise LLMFailedError("PROLOG_AI_PROVIDER는 openrouter 또는 nvidia여야 합니다.")
+        raise LLMFailedError("PROLOG_AI_PROVIDER는 openai, openrouter 또는 nvidia여야 합니다.")
     base_url, default_model, key_env = providers[provider]
     model = os.environ.get("PROLOG_AI_MODEL", "").strip() or default_model
     temperature, top_p = TEMPERATURE, 1.0
     effort = None
+    if provider == "openai":
+        if simple_query:
+            model = (
+                os.environ.get("PROLOG_AI_QUERY_MODEL", "").strip()
+                or os.environ.get("PROLOG_AI_MODEL", "").strip()
+                or OPENAI_QUERY_MODEL
+            )
+        effort = "low" if simple_query else "medium"
     if provider == "nvidia":
         temperature = 0.5
         if model == "stepfun-ai/step-5-preview":
@@ -104,6 +118,7 @@ def call_llm(
     schema: type[BaseModel],
     timeout: float = DEFAULT_TIMEOUT_SECONDS,
     max_retries: int = DEFAULT_MAX_RETRIES,
+    simple_query: bool = False,
 ) -> dict[str, Any]:
     """prompt를 LLM에 보내고 schema 형태의 원시 딕셔너리를 반환한다.
 
@@ -114,7 +129,9 @@ def call_llm(
     if _use_fake_llm():
         return _build_fake_instance(schema)
 
-    return _call_real_llm(prompt, schema=schema, timeout=timeout, max_retries=max_retries)
+    return _call_real_llm(
+        prompt, schema=schema, timeout=timeout, max_retries=max_retries, simple_query=simple_query
+    )
 
 
 def _call_real_llm(
@@ -123,10 +140,11 @@ def _call_real_llm(
     schema: type[BaseModel],
     timeout: float,
     max_retries: int,
+    simple_query: bool,
 ) -> dict[str, Any]:
     import openai
 
-    config = get_llm_config()
+    config = get_llm_config(simple_query=simple_query)
     # 다른 제공사나 OPENAI_API_KEY로 대체하지 않는다.
     api_key = config.require_api_key()
     # SDK도 자체 재시도(기본 2회)를 하므로 끄지 않으면 이 함수의 재시도와 겹쳐 요청이 최대 9번 나간다.
@@ -144,39 +162,105 @@ def _request_with_client(client, config, prompt, schema, timeout, max_retries):
 
     # OpenRouter 라우팅 옵션은 NVIDIA에 보내지 않는다.
     provider_options = config.request_options()
+    policy = current_policy.get()
+    output_limit = policy.max_output_tokens if policy else MAX_OUTPUT_TOKENS
+    strict_output = policy is not None and config.provider == "openai"
+    parameters = (
+        openai.pydantic_function_tool(schema)["function"]["parameters"]
+        if strict_output
+        else schema.model_json_schema()
+    )
+
+    request_input = prompt
+    cache_options = {}
+    if (
+        policy
+        and policy.prompt_cache_prefix
+        and config.provider == "openai"
+        and config.model.startswith(("gpt-6", "gpt-5.6"))
+    ):
+        prefix = policy.prompt_cache_prefix
+        if not prompt.startswith(prefix):
+            raise ValueError("Cache prefix does not match request")
+        # GPT-6 caches eligible message boundaries, not arbitrary shared substrings.
+        # Mark the unchanged corpus explicitly; the task suffix needs no cache write.
+        request_input = [
+            {
+                "role": "user",
+                "content": [
+                    {
+                        "type": "input_text",
+                        "text": prefix,
+                        "prompt_cache_breakpoint": {"mode": "explicit"},
+                    }
+                ],
+            },
+        ]
+        if suffix := prompt[len(prefix) :]:
+            request_input.append({"role": "user", "content": suffix})
+        cache_options = {"extra_body": {"prompt_cache_options": {"mode": "explicit"}}}
 
     last_error: Exception | None = None
     for attempt in range(max_retries + 1):
+        # Reserve durably before EVERY physical attempt, including retries. A failure
+        # here must never be caught as a provider error or send a request anyway.
+        if policy:
+            policy.before_attempt()
         if attempt > 0:
             sleep_before_retry(attempt - 1)
         attempt_started = time.monotonic()
         try:
-            response = client.chat.completions.create(
-                model=config.model,
-                max_tokens=MAX_OUTPUT_TOKENS,
-                temperature=config.temperature,
-                top_p=config.top_p,
-                messages=[{"role": "user", "content": prompt}],
-                tools=[
-                    {
-                        "type": "function",
-                        "function": {
+            if config.provider == "openai":
+                response = client.responses.create(
+                    model=config.model,
+                    input=request_input,
+                    max_output_tokens=output_limit,
+                    reasoning={"effort": config.reasoning_effort},
+                    tools=[
+                        {
+                            "type": "function",
                             "name": "respond",
                             "description": "정해진 스키마로 응답한다.",
-                            "parameters": schema.model_json_schema(),
-                        },
-                    }
-                ],
-                tool_choice={"type": "function", "function": {"name": "respond"}},
-                stream=config.provider == "nvidia",
-                **provider_options,
-            )
-            if config.provider == "nvidia":
-                response = _collect_stream(response, timeout, started=attempt_started)
+                            "parameters": parameters,
+                            "strict": strict_output,
+                        }
+                    ],
+                    tool_choice={"type": "function", "name": "respond"},
+                    parallel_tool_calls=False,
+                    store=False,
+                    **cache_options,
+                )
+            else:
+                response = client.chat.completions.create(
+                    model=config.model,
+                    max_tokens=output_limit,
+                    temperature=config.temperature,
+                    top_p=config.top_p,
+                    messages=[{"role": "user", "content": prompt}],
+                    tools=[
+                        {
+                            "type": "function",
+                            "function": {
+                                "name": "respond",
+                                "description": "정해진 스키마로 응답한다.",
+                                "parameters": schema.model_json_schema(),
+                            },
+                        }
+                    ],
+                    tool_choice={"type": "function", "function": {"name": "respond"}},
+                    stream=config.provider == "nvidia",
+                    **provider_options,
+                )
+                if config.provider == "nvidia":
+                    response = _collect_stream(response, timeout, started=attempt_started)
         except LLMTimeoutError as exc:
             last_error = exc
             continue
         except openai.APIStatusError as exc:
+            # A credit/quota refusal is not a transient throughput limit.
+            # Retrying cannot replenish credit and consumes the workflow allowance.
+            if getattr(exc, "code", None) in {"credit_balance_exhausted", "insufficient_quota"}:
+                raise LLMFailedError("LLM API 크레딧 또는 사용 한도가 부족합니다.") from exc
             if not _is_retryable_status(exc.status_code):
                 raise LLMFailedError(
                     f"LLM 요청이 거부되었습니다({exc.status_code}): {exc}"
@@ -187,17 +271,30 @@ def _request_with_client(client, config, prompt, schema, timeout, max_retries):
             last_error = exc
             continue
 
-        if not response.choices:
-            last_error = LLMFailedError("LLM 응답에 choices가 없습니다.")
-            continue
-        choice = response.choices[0]
-        if choice.finish_reason == "length":
-            # 같은 요청을 다시 보내도 또 잘리므로 재시도하지 않는다.
-            raise LLMFailedError(f"LLM 출력이 최대 길이({MAX_OUTPUT_TOKENS} 토큰)에서 잘렸습니다.")
-        if choice.finish_reason not in {"stop", "tool_calls"}:
-            last_error = LLMFailedError("LLM 응답의 완료 신호가 없습니다.")
-            continue
-        arguments = _find_tool_arguments(choice.message)
+        if policy and policy.on_usage and getattr(response, "usage", None) is not None:
+            policy.on_usage(response.usage.model_dump())
+        if config.provider == "openai":
+            if getattr(response.incomplete_details, "reason", None) == "max_output_tokens":
+                raise LLMFailedError(f"LLM 출력이 최대 길이({output_limit} 토큰)에서 잘렸습니다.")
+            if response.status != "completed":
+                last_error = LLMFailedError("OpenAI 응답이 완료되지 않았습니다.")
+                continue
+            calls = [item for item in response.output if item.type == "function_call"]
+            arguments = (
+                calls[0].arguments if len(calls) == 1 and calls[0].name == "respond" else None
+            )
+        else:
+            if not response.choices:
+                last_error = LLMFailedError("LLM 응답에 choices가 없습니다.")
+                continue
+            choice = response.choices[0]
+            if choice.finish_reason == "length":
+                # 같은 요청을 다시 보내도 또 잘리므로 재시도하지 않는다.
+                raise LLMFailedError(f"LLM 출력이 최대 길이({output_limit} 토큰)에서 잘렸습니다.")
+            if choice.finish_reason not in {"stop", "tool_calls"}:
+                last_error = LLMFailedError("LLM 응답의 완료 신호가 없습니다.")
+                continue
+            arguments = _find_tool_arguments(choice.message)
         if arguments is None:
             last_error = LLMFailedError("LLM 응답에 respond 도구 호출이 없습니다.")
             continue

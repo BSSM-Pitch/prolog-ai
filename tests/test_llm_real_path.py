@@ -386,3 +386,142 @@ def test_invalid_glm_effort_fails_before_network(fake_client, monkeypatch):
     with pytest.raises(LLMFailedError, match="reasoning_effort"):
         call_llm("p", schema=Output)
     assert fake_client.init_kwargs is None
+
+
+def test_scoped_policy_counts_physical_retries_and_never_sends_over_budget(fake_client):
+    from prolog_ai.core.request_policy import RequestPolicy, current_policy, request_policy
+
+    fake_client.behaviors = [status_error(openai.InternalServerError, 500)]
+    reservations = []
+
+    def reserve():
+        if reservations:
+            raise RuntimeError("budget exhausted")
+        reservations.append(1)
+
+    with (
+        request_policy(RequestPolicy(reserve, max_output_tokens=32768)),
+        pytest.raises(RuntimeError, match="budget exhausted"),
+    ):
+        call_llm("test", schema=Output, max_retries=1)
+    assert len(fake_client.calls) == 1
+    assert fake_client.calls[0]["max_tokens"] == 32768
+    assert fake_client.init_kwargs["max_retries"] == 0
+    assert current_policy.get() is None
+
+
+def test_budgeted_openai_requests_enforce_strict_schema_without_extra_calls():
+    from prolog_ai.core.request_policy import RequestPolicy, request_policy
+    from prolog_ai.memory.compact import Extraction
+
+    calls, reservations = [], []
+
+    def create(**kwargs):
+        calls.append(kwargs)
+        return SimpleNamespace(
+            status="completed",
+            incomplete_details=None,
+            usage=None,
+            output=[SimpleNamespace(type="function_call", name="respond", arguments="{}")],
+        )
+
+    client = SimpleNamespace(responses=SimpleNamespace(create=create))
+    config = llm.LLMConfig("openai", llm.OPENAI_BASE_URL, "gpt-6-luna", "UNUSED", 0, 1, "low")
+    with request_policy(RequestPolicy(lambda: reservations.append(1))):
+        llm._request_with_client(client, config, "test", Extraction, 300, 0)
+    tool = calls[0]["tools"][0]
+    assert tool["strict"] is True
+    record = tool["parameters"]["$defs"]["Record"]
+    assert set(record["required"]) == set(record["properties"])
+    assert record["additionalProperties"] is False
+    assert len(calls) == len(reservations) == 1
+
+
+@pytest.mark.parametrize("model,explicit", [("gpt-6.1-terra", True), ("gpt-4.1", False)])
+def test_corpus_cache_boundary_preserves_text_and_skips_variable_suffix(model, explicit):
+    from prolog_ai.core.request_policy import RequestPolicy, request_policy
+
+    calls, reservations = [], []
+
+    def create(**kwargs):
+        calls.append(kwargs)
+        return SimpleNamespace(
+            status="completed",
+            incomplete_details=None,
+            usage=None,
+            output=[
+                SimpleNamespace(type="function_call", name="respond", arguments='{"value":"ok"}')
+            ],
+        )
+
+    client = SimpleNamespace(responses=SimpleNamespace(create=create))
+    config = llm.LLMConfig("openai", llm.OPENAI_BASE_URL, model, "UNUSED", 0, 1, "low")
+    prefix, suffix = "UNCHANGED EVIDENCE\n", "variable task"
+    with request_policy(RequestPolicy(lambda: reservations.append(1), prompt_cache_prefix=prefix)):
+        llm._request_with_client(client, config, prefix + suffix, Output, 300, 0)
+    assert len(calls) == len(reservations) == 1
+    request = calls[0]
+    if explicit:
+        assert request["input"][0]["content"][0] == {
+            "type": "input_text",
+            "text": prefix,
+            "prompt_cache_breakpoint": {"mode": "explicit"},
+        }
+        assert request["input"][1]["content"] == suffix
+        assert request["extra_body"] == {"prompt_cache_options": {"mode": "explicit"}}
+    else:
+        assert request["input"] == prefix + suffix
+        assert "extra_body" not in request
+
+
+def test_invalid_corpus_cache_boundary_fails_before_reserving_or_sending():
+    from prolog_ai.core.request_policy import RequestPolicy, request_policy
+
+    def forbidden(*args, **kwargs):
+        pytest.fail("Invalid prefix consumed a request")
+
+    client = SimpleNamespace(responses=SimpleNamespace(create=forbidden))
+    config = llm.LLMConfig("openai", llm.OPENAI_BASE_URL, "gpt-6.1-terra", "UNUSED", 0, 1, "low")
+    with (
+        request_policy(RequestPolicy(forbidden, prompt_cache_prefix="wrong")),
+        pytest.raises(ValueError, match="Cache prefix"),
+    ):
+        llm._request_with_client(client, config, "actual", Output, 300, 0)
+
+
+def test_prefix_only_request_does_not_append_an_empty_user_message():
+    from prolog_ai.core.request_policy import RequestPolicy, request_policy
+
+    calls = []
+
+    def create(**kwargs):
+        calls.append(kwargs)
+        return SimpleNamespace(
+            status="completed",
+            incomplete_details=None,
+            usage=None,
+            output=[
+                SimpleNamespace(type="function_call", name="respond", arguments='{"value":"ok"}')
+            ],
+        )
+
+    client = SimpleNamespace(responses=SimpleNamespace(create=create))
+    config = llm.LLMConfig("openai", llm.OPENAI_BASE_URL, "gpt-6.1-sol", "UNUSED", 0, 1, "low")
+    with request_policy(RequestPolicy(lambda: None, prompt_cache_prefix="full source")):
+        llm._request_with_client(client, config, "full source", Output, 300, 0)
+    assert len(calls[0]["input"]) == 1
+    assert calls[0]["input"][0]["content"][0]["text"] == "full source"
+
+
+@pytest.mark.parametrize("code", ["credit_balance_exhausted", "insufficient_quota"])
+def test_credit_exhaustion_never_retries_as_a_transient_rate_limit(fake_client, code):
+    fake_client.behaviors = [
+        openai.RateLimitError(
+            "Quota refused",
+            response=httpx.Response(429, request=REQUEST),
+            body={"code": code, "message": "Quota refused"},
+        )
+    ]
+    with pytest.raises(LLMFailedError, match="크레딧"):
+        call_llm("p", schema=Output, max_retries=2)
+    assert len(fake_client.calls) == 1

@@ -59,19 +59,6 @@ jobs:
           aws-region: ${{ env.AWS_REGION }}
           allowed-account-ids: ${{ env.AWS_ACCOUNT_ID }}
 
-      - name: Sync NVIDIA key to Parameter Store
-        shell: bash
-        env:
-          NVIDIA_API_KEY: ${{ secrets.NVIDIA_API_KEY }}
-        run: |
-          test -n "$NVIDIA_API_KEY"
-          aws ssm put-parameter \
-            --name /prolog/prod/nvidia-api-key \
-            --type SecureString \
-            --value "$NVIDIA_API_KEY" \
-            --overwrite \
-            >/dev/null
-
       - name: Deploy through Systems Manager
         shell: bash
         run: |
@@ -82,17 +69,16 @@ jobs:
               "exec 9>/var/lock/prolog-deploy.lock",
               "flock -w 1800 9",
               "cd /opt/prolog",
+              "grep -Eq \u0027^OPENAI_API_KEY=.+$\u0027 /opt/prolog/.env.production || { printf \u0027Missing OPENAI_API_KEY in production environment\\n\u0027 >&2; exit 1; }",
+              "sudo sed -i \"/^PROLOG_AI_PROVIDER=/d;/^PROLOG_AI_MODEL=/d;/^PROLOG_AI_QUERY_MODEL=/d\" /opt/prolog/.env.production",
+              "printf \"PROLOG_AI_PROVIDER=openai\\nPROLOG_AI_MODEL=gpt-6.1-sol\\nPROLOG_AI_QUERY_MODEL=gpt-6.1-sol\\n\" | sudo tee -a /opt/prolog/.env.production >/dev/null",
               "git fetch --depth=1 origin master",
               "git checkout --force FETCH_HEAD",
-              "KEY=$(aws ssm get-parameter --region ap-northeast-2 --name /prolog/prod/nvidia-api-key --with-decryption --query Parameter.Value --output text)",
-              "test -n \"$KEY\"",
-              "sudo sed -i \"/^NVIDIA_API_KEY=/d;/^PROLOG_AI_PROVIDER=/d;/^PROLOG_AI_MODEL=/d;/^PROLOG_AI_REASONING_EFFORT=/d\" /opt/prolog/.env.production",
-              "printf \"NVIDIA_API_KEY=%s\\nPROLOG_AI_PROVIDER=nvidia\\nPROLOG_AI_MODEL=z-ai/glm-5.3-flash\\nPROLOG_AI_REASONING_EFFORT=low\\n\" \"$KEY\" | sudo tee -a /opt/prolog/.env.production >/dev/null",
-              "unset KEY",
               "docker run --rm --volume /opt/prolog:/workspace --workdir /workspace prolog-backend:prod uv lock --upgrade-package prolog-ai",
               ("grep -F " + $sha + " uv.lock >/dev/null"),
               "docker compose -p prolog -f compose.prod.yml config --quiet",
               "docker compose -p prolog -f compose.prod.yml build api",
+              "docker compose -p prolog -f compose.prod.yml run --rm --no-deps api python -c \u0027import os; from prolog_ai.core.llm import get_llm_config; from prolog_ai.memory.compact import VERSION; assert os.getenv(\"USE_FAKE_LLM\") != \"1\"; configs = [get_llm_config(simple_query=q) for q in (False, True)]; assert all(c.provider == \"openai\" and c.model == \"gpt-6.1-sol\" for c in configs); assert all(c.require_api_key() for c in configs); print({\"harness\": VERSION, \"models\": [c.model for c in configs]})\u0027",
               "docker compose -p prolog -f compose.prod.yml run --rm migrate",
               "docker compose -p prolog -f compose.prod.yml up -d --no-build --no-deps --force-recreate api outbox-worker notifier-worker extractor-worker ai-worker sweeper-worker caddy",
               "curl --fail --silent --show-error --retry 30 --retry-delay 2 --retry-all-errors http://127.0.0.1/v1/health",

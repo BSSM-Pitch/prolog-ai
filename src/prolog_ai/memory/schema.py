@@ -67,6 +67,33 @@ class ExtractionOutput(Model):
     observations: list[ObservationDraft]
 
 
+class AttributionCheck(Model):
+    """Retained model decisions, not additional accepted character facts."""
+
+    stage: Literal["extract", "verify", "adjudicate"]
+    name: Text | None
+    character_id: Text | None
+    attribution: Literal["certain", "uncertain"]
+    reason: ShortText
+    evidence: list[Evidence] = Field(min_length=1, max_length=17)
+
+
+class IdentityLink(Model):
+    reference: Text
+    canonical: Text
+    character_id: Text
+    relative_to: Text | None = None
+    evidence: list[Evidence] = Field(min_length=1, max_length=16)
+
+
+class PerceptionContext(Model):
+    character_id: Text
+    basis: Literal["context_inference"] = "context_inference"
+    anchor_observation_ids: list[Text] = Field(min_length=2, max_length=2)
+    evidence: list[Evidence] = Field(min_length=2, max_length=2)
+    reason: ShortText
+
+
 class Observation(Model):
     observation_id: Text
     character_id: Text | None
@@ -78,6 +105,14 @@ class Observation(Model):
     context: ShortText
     interlocutor_ids: list[Text]
     evidence: Evidence
+    attribution_checks: list[AttributionCheck] = Field(default_factory=list)
+    # Compatibility: attribution still means a confirmed, registered character.
+    # These fields keep a recognized subject even when entity linking fails.
+    subject_name: Text | None = None
+    subject_attribution: Literal["certain", "uncertain"] | None = None
+    identity_status: Literal["linked", "unlinked", "subject_uncertain"] | None = None
+    identity_links: list[IdentityLink] = Field(default_factory=list)
+    perception_context: PerceptionContext | None = None
 
 
 class SpeakerDecision(Model):
