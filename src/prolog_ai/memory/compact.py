@@ -30,7 +30,7 @@ from prolog_ai.memory.schema import (
 )
 from prolog_ai.memory.source import encode, identity, quote_start, snapshot_id, validate_memory
 
-VERSION = "compact-memory-v11"
+VERSION = "compact-memory-v12"
 SYNTHESIS_VERSION = "shared-prefix-v1"
 BATCH_CHARS = 12000
 UNIT_CHARS = 500
@@ -43,6 +43,7 @@ class Person(Model):
     name: str = Field(min_length=1, max_length=100)
     kind: Literal["named_person", "ambiguous"]
     alias_of: str | None = Field(default=None, max_length=100)
+    reference_only: bool = False
     e: int = Field(ge=0, description="source unit containing the literal name")
     reason: str = Field(min_length=1, max_length=160)
 
@@ -231,10 +232,16 @@ def plan(scenes: list[dict], *, granular: bool = True) -> list[dict]:
                         }
                     )
                     previous_end = end
+    scene_sizes = {}
+    for unit in units:
+        scene_sizes[unit["scene"]] = scene_sizes.get(unit["scene"], 0) + len(unit["text"])
     groups, group, size = [], [], 0
     for unit in units:
-        scene_ids = {u["scene"] for u in group} | {unit["scene"]}
-        if group and (size + len(unit["text"]) > BATCH_CHARS or len(scene_ids) > 2):
+        # Keep small scenes whole: edits near the beginning do not shift every
+        # later batch. Logical headings do not impose a two-scene call minimum.
+        new_scene = bool(group and group[-1]["scene"] != unit["scene"])
+        needed = min(scene_sizes[unit["scene"]], BATCH_CHARS) if new_scene else len(unit["text"])
+        if group and size + needed > BATCH_CHARS:
             groups.append(group)
             group, size = [], 0
         group.append(unit)
@@ -588,10 +595,10 @@ def run_step(stage: str, payload: dict) -> dict:
             verification_wire.CONTEXT_INSTRUCTION
             if payload.get("identity_context")
             else verification_wire.INSTRUCTION,
-            verification_wire.ContextVerification
-            if payload.get("identity_context")
-            else verification_wire.Verification,
+            verification_wire.CompactContextVerification,
         )
+    if stage == "verify":
+        instruction += verification_wire.COMPACT_INSTRUCTION
     if stage in {"propose", "assess"}:
         # Tool schema and corpus precede changing task/candidates. Both calls still
         # receive all evidence; caching must never replace independent assessment.
@@ -938,6 +945,7 @@ def candidates(batch: dict, extracted: dict) -> list[dict]:
                 "name": p["name"],
                 "kind": p["kind"],
                 "alias_of": p["alias_of"],
+                "reference_only": p.get("reference_only", False),
                 "reason": p["reason"],
                 "quote": e["quote"],
                 "evidence": e,
@@ -962,9 +970,12 @@ def build_memory(
 ) -> Memory:
     roster = sorted([Character.model_validate(c) for c in characters], key=lambda c: c.character_id)
     sources = sorted([Scene.model_validate(s) for s in scenes], key=lambda s: s.order)
+    from prolog_ai.memory.names import name_key
+
     names = {}
     for c in roster:
         for name in [c.name, *c.aliases]:
+            names.setdefault(name_key(name), set()).add(c.character_id)
             names.setdefault(name.casefold(), set()).add(c.character_id)
 
     local_bindings: dict[str, str] = {}
@@ -1000,9 +1011,9 @@ def build_memory(
             name = record["c"]
         if record and (link := record.get("_resolved_identity")) and name == link["reference"]:
             name = link["canonical"]
-        ids = names.get((name or "").casefold(), set())
+        ids = names.get(name_key(name or ""), set())
         if not ids and name in local_bindings:
-            ids = names.get(local_bindings[name].casefold(), set())
+            ids = names.get(name_key(local_bindings[name]), set())
         return next(iter(ids)) if len(ids) == 1 else None
 
     memory = Memory(

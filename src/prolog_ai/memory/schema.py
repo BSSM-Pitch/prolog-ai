@@ -32,6 +32,8 @@ class Scene(Model):
     chapter_id: Text | None = None
     story_time: Text | None = None
     text: str = Field(min_length=1)
+    source_start: int = Field(default=0, ge=0)
+    chapter_no: int | None = None
 
     @model_validator(mode="after")
     def nonblank(self):

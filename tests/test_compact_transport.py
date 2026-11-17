@@ -31,7 +31,7 @@ def test_cache_prefix_identical_for_full_focused_and_single_repair(monkeypatch):
             with request_policy(RequestPolicy(before_attempt=lambda: None)):
                 compact.run_step("verify", {**p, "allow_partial": True})
     assert prefixes[0] == prefixes[1] == prefixes[2]
-    assert prompts[0] == wire.INSTRUCTION + "\n" + compact.encode(wire.request(payload))
+    assert prompts[0] == wire.INSTRUCTION + wire.COMPACT_INSTRUCTION + "\n" + compact.encode(wire.request(payload))
     assert prompts[0] != prompts[1] == prompts[2]
     assert wire.cache_parts(focused)[1]["requested_targets"] == ["T1.1"]
     assert '"c":' not in prefixes[0]
@@ -105,7 +105,7 @@ def test_noncacheable_models_keep_original_focused_prompt(monkeypatch, provider,
 
     def answer(prompt, **kwargs):
         assert current_policy.get().prompt_cache_prefix is None
-        assert prompt == wire.INSTRUCTION + "\n" + compact.encode(wire.request(focused))
+        assert prompt == wire.INSTRUCTION + wire.COMPACT_INSTRUCTION + "\n" + compact.encode(wire.request(focused))
         return {"rows": [], "links": []}
 
     with (

@@ -19,7 +19,7 @@ DETAIL = re.compile(r'["“”「」]|버릇|습관|말투|말버릇|무의식|�
 
 class NewPerson(Model):
     name: str = Field(min_length=1, max_length=100)
-    kind: Literal["named_person", "ambiguous"] = Field(
+    kind: Literal["named_person", "ambiguous", "reference"] = Field(
         default="ambiguous",
         description="Explicit personal name or ambiguous title, kinship term, or uncertain name",
     )
@@ -73,6 +73,11 @@ rows의 주체도 확인된 정식 인물 번호로 쓴다. identities는 별도
 원문 문맥상 명확한 기존 인물은 known 번호를 쓴다. 새 이름/축약 호칭은 people에
 이름과 실제 등장 unit(u), 동일인 후보 alias(known 번호 또는 -1)를 넣는다.
 kind는 원문에 명시된 고유 인명이면 named_person, 호칭·직함·관계명·축약 표기면 ambiguous다.
+reference는 작품 밖 인물을 비교·흉내·사칭·비유하기 위해 언급한 경우다. 원문에 이름이
+있다는 사실만으로 named_person으로 삼지 않는다. 실제 작중 인물(장면 밖에서 활동하거나
+대화로만 알려진 인물 포함)과 외부 이름 인용을 구별한다. 실제로 빙의하거나 변신한
+인물은 단순 흉내와 다르므로 문맥을 확인한다. 동일 인물이 서로 다른 띄어쓰기로
+등장하면 문맥으로 확인하고 정식 표기로 기록한다. 정식 실명은 후반에도 named_person으로 유지한다.
 alias=-1은 기존 인물 번호를 모른다는 뜻이며, 이름이 확정됐다는 뜻이 아니다.
 호칭의 정체가 밝혀져도 호칭 자체를 새 고유 인명으로 등록하지 않는다.
 새 people의 번호는 len(known)+배열 위치다. 근거 없이 성을 붙이지 않는다.
@@ -361,7 +366,8 @@ def extraction_response(payload: dict, raw: dict) -> dict:
             # every otherwise valid observation in this paid response. Alias
             # IDs address known people only; never reinterpret them as new IDs.
             "alias_of": name_at(known, p.alias) if p.alias < len(known) else None,
-            "kind": "ambiguous" if p.alias >= 0 or len(known) + i in references else p.kind,
+            "kind": "ambiguous" if p.kind == "reference" or p.alias >= 0 or len(known) + i in references else p.kind,
+            "reference_only": p.kind == "reference",
             "e": p.u,
             "reason": "원문에서 발견한 이름/호칭",
         }
