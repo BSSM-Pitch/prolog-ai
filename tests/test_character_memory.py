@@ -188,6 +188,24 @@ def test_observations_patterns_and_tentative_hypotheses_have_exact_provenance(ll
     assert result["meta"]["llm_calls"] == 8
 
 
+def test_economy_reuses_verified_checkpoint_and_preserves_patterns(llm):
+    deep = build()["data"]
+    deep["complete"] = False
+    llm.calls.clear()
+
+    reused = run_character_memory("novel", SCENES, CHARACTERS, deep, economy=True)
+    assert reused["data"]["complete"]
+    assert reused["data"]["patterns"] == deep["patterns"]
+    assert reused["data"]["observations"] == deep["observations"]
+    assert not llm.calls
+
+    fresh = run_character_memory("novel", SCENES, CHARACTERS, economy=True)
+    assert fresh["data"]["complete"]
+    assert fresh["data"]["speaker_verification_version"] == "v1"
+    assert fresh["data"]["patterns"] == []
+    assert {name for name, _ in llm.calls} == {"ExtractionOutput", "SpeakerVerificationOutput"}
+
+
 def test_a_single_minor_detail_is_kept_without_claiming_a_pattern(llm):
     memory = run_character_memory("novel", SCENES[:1], CHARACTERS)["data"]
     assert len(memory["observations"]) == 1
@@ -399,6 +417,32 @@ def test_every_observation_batch_is_checked_for_counterexamples(llm):
     assert retrieved["evidence_selection"]["omitted_counterexample_observation_count"] > 0
     assert context["coverage"]["sampled_pattern_count"] == 1
     assert len(encode(context)) <= 12000
+
+
+def test_pattern_review_limits_candidates_and_prioritizes_repeated_evidence(llm):
+    def transform(name, data, result):
+        if name == "DiscoveryOutput":
+            repeated = result["proposals"][0]
+            observation_id = data["observations"][0]["observation_id"]
+            result["proposals"] = [
+                {
+                    **repeated,
+                    "description": f"{observation_id}의 후보 {i}: " + "가" * 350,
+                }
+                for i in range(40)
+            ] + [repeated]
+        return result
+
+    llm.transform = transform
+    scenes = [{**SCENES[i % 3], "scene_id": f"s{i}", "order": i} for i in range(30)]
+    result = run_character_memory("novel", scenes, CHARACTERS, batch_chars=4000)
+    assert "data" in result, result
+    checks = [data for name, data in llm.calls if name == "AssessmentOutput"]
+    assert len(checks) > 1
+    assert checks[0]["proposals"][0]["description"] == "관심을 받으면 도움을 거절하는 경향"
+    assert all(check["proposals"] == checks[0]["proposals"] for check in checks)
+    reviewed_ids = [o["observation_id"] for check in checks for o in check["observations"]]
+    assert len(reviewed_ids) == len(set(reviewed_ids)) == 30
 
 
 @pytest.mark.parametrize(

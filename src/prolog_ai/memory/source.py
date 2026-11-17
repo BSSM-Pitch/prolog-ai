@@ -87,8 +87,35 @@ def validate_memory(value, *, require_complete=False) -> Memory:
             or (o.character_id is not None and o.character_id not in chars)
             or (o.attribution == "certain" and o.character_id is None)
             or not set(o.interlocutor_ids) <= chars
+            or (o.subject_attribution == "certain" and o.subject_name is None)
+            or (o.identity_status == "linked" and o.character_id is None)
+            or (
+                o.identity_status == "unlinked"
+                and (o.character_id is not None or o.subject_attribution != "certain")
+            )
         ):
             raise InputValidationError("관찰의 원문 출처 또는 인물 참조가 올바르지 않습니다.")
+        for check in [*o.attribution_checks, *o.identity_links]:
+            if check.character_id is not None and check.character_id not in chars:
+                raise InputValidationError("귀속 판정의 인물 참조가 올바르지 않습니다.")
+            for proof in check.evidence:
+                source = scenes.get(proof.scene_id)
+                if (
+                    source is None
+                    or proof.revision != source.revision
+                    or not 0 <= proof.start < proof.end <= len(source.text)
+                    or source.text[proof.start : proof.end] != proof.quote
+                ):
+                    raise InputValidationError("귀속 판정의 원문 근거가 올바르지 않습니다.")
+    if any(o.perception_context is not None for o in memory.observations):
+        from prolog_ai.memory.perception_context import infer_perception_contexts
+
+        expected = infer_perception_contexts(memory)
+        for o in memory.observations:
+            if o.perception_context is not None and o.perception_context != expected.get(
+                o.observation_id
+            ):
+                raise InputValidationError("인지 문맥 연결의 주체·원문·검증 근거가 맞지 않습니다.")
     for check in memory.speaker_verifications:
         e = check.evidence
         scene = scenes.get(e.scene_id)

@@ -28,6 +28,7 @@ from prolog_ai.memory.source import (
     batches,
     chunks,
     digest,
+    encode,
     identity,
     parse,
     quote_start,
@@ -41,6 +42,8 @@ from prolog_ai.memory.speakers import verify_speakers
 # 포함되므로 새 화자 검증 단계는 기존 추출만 재사용하고 검증을 건너뛰지 않는다.
 PIPELINE_VERSION = "character-memory-v2-behavior"
 MAX_PROMPT_CHARS = 32000
+MAX_PATTERN_CANDIDATES = 16
+MAX_PATTERN_CANDIDATE_CHARS = 5000
 
 
 class AnalysisStopped(Exception):
@@ -49,9 +52,10 @@ class AnalysisStopped(Exception):
 
 
 class Session:
-    def __init__(self, memory, max_calls):
+    def __init__(self, memory, max_calls, *, simple_query=False):
         self.memory = memory
         self.max_calls = max_calls
+        self.simple_query = simple_query
         self.used_keys = set()
         self.meta = {
             "llm_calls": 0,
@@ -99,6 +103,7 @@ class Session:
             output_schema=schema,
             timeout=180.0,
             max_retries=1,
+            simple_query=self.simple_query,
         )
         if "error" in result:
             result["error"]["details"]["stage"] = stage
@@ -171,7 +176,8 @@ def _extract(session, chunk_chars):
 
 
 def observation_record(observation, scenes):
-    record = observation.model_dump()
+    # Storage/UI provenance must not inflate subsequent model requests.
+    record = observation.model_dump(exclude={"attribution_checks"})
     scene = scenes[observation.evidence.scene_id]
     record["scene_order"] = scene.order
     record["story_time"] = scene.story_time
@@ -179,7 +185,7 @@ def observation_record(observation, scenes):
 
 
 def _discover(session, character, records, speech_baseline, batch_chars):
-    proposals, seen = [], set()
+    proposals = {}
     for index, batch in enumerate(batches(records, batch_chars)):
         ids = {r["observation_id"] for r in batch}
         output = session.call(
@@ -199,56 +205,98 @@ def _discover(session, character, records, speech_baseline, batch_chars):
                 session.meta["removed_proposals"] += 1
                 continue
             key = ("".join(p.description.split()), "".join(p.condition.split()))
-            if key not in seen:
-                seen.add(key)
-                proposals.append(p)
-    return proposals
+            if key in proposals:
+                existing = proposals[key]
+                existing.seed_observation_ids = list(
+                    dict.fromkeys(existing.seed_observation_ids + p.seed_observation_ids)
+                )
+            else:
+                proposals[key] = p
+    return list(proposals.values())
 
 
 def _analyze_character(session, character, observations, scenes, baseline, batch_chars):
     if len({o.evidence.scene_id for o in observations}) < 2:
         return  # 단일 장면의 디테일은 관찰로 보존하지만 반복 패턴으로 승격하지 않는다.
     records = [observation_record(o, scenes) for o in observations]
-    proposals = _discover(session, character, records, baseline, batch_chars)
+    candidates = _discover(session, character, records, baseline, batch_chars)
+    scene_by_id = {o.observation_id: o.evidence.scene_id for o in observations}
+    candidates.sort(
+        key=lambda p: (
+            -len({scene_by_id[oid] for oid in p.seed_observation_ids}),
+            -len(p.seed_observation_ids),
+        )
+    )
+    # Keep one bounded candidate list, so each evidence batch is sent once.
+    proposals, numbered = [], []
+    candidate_chars = 2
+    for proposal in candidates:
+        item = {
+            "proposal_index": len(proposals),
+            "description": proposal.description,
+            "condition": proposal.condition,
+        }
+        size = len(encode(item)) + 1
+        if candidate_chars + size > MAX_PATTERN_CANDIDATE_CHARS:
+            continue
+        proposals.append(proposal)
+        numbered.append(item)
+        candidate_chars += size
+        if len(proposals) == MAX_PATTERN_CANDIDATES:
+            break
+    if not proposals:
+        return
+
     assessments = [{"support": set(), "counter": set()} for _ in proposals]
-    numbered = [
-        {"proposal_index": i, "description": p.description, "condition": p.condition}
-        for i, p in enumerate(proposals)
+    indexes = set(range(len(proposals)))
+    # Character identity and source location are already known locally.
+    evidence = [
+        {
+            "observation_id": r["observation_id"],
+            "scene_order": r["scene_order"],
+            "story_time": r["story_time"],
+            "kind": r["kind"],
+            "presentation": r["presentation"],
+            "behavior_role": r["behavior_role"],
+            "summary": r["summary"],
+            "context": r["context"],
+            "interlocutor_ids": r["interlocutor_ids"],
+            "evidence": {"quote": r["evidence"]["quote"]},
+        }
+        for r in records
     ]
-    for group in batches(numbered, 5000):
-        indexes = {p["proposal_index"] for p in group}
-        for index, batch in enumerate(batches(records, batch_chars)):
-            allowed = {r["observation_id"] for r in batch}
-            output = session.call(
-                AssessmentOutput,
-                prompt.ASSESS,
-                {
-                    "character": character.model_dump(),
-                    "proposals": group,
-                    "observations": batch,
-                },
-                f"assess:{character.character_id}:{group[0]['proposal_index']}:{index}",
+    for index, batch in enumerate(batches(evidence, batch_chars)):
+        allowed = {r["observation_id"] for r in batch}
+        output = session.call(
+            AssessmentOutput,
+            prompt.ASSESS,
+            {
+                "character": character.model_dump(),
+                "proposals": numbered,
+                "observations": batch,
+            },
+            f"assess:{character.character_id}:{index}",
+        )
+        returned = [a.proposal_index for a in output.assessments]
+        if set(returned) != indexes or len(returned) != len(indexes):
+            session.fail(
+                "패턴 재검토 응답에 누락/중복 후보가 있습니다.",
+                stage="assess",
+                internal_code="INVALID_REFERENCE",
             )
-            returned = [a.proposal_index for a in output.assessments]
-            if set(returned) != indexes or len(returned) != len(indexes):
+        for a in output.assessments:
+            support, counter = (
+                set(a.supporting_observation_ids),
+                set(a.counterexample_observation_ids),
+            )
+            if not (support | counter) <= allowed or support & counter:
                 session.fail(
-                    "패턴 재검토 응답에 누락/중복 후보가 있습니다.",
+                    "패턴 재검토의 근거 참조가 올바르지 않습니다.",
                     stage="assess",
                     internal_code="INVALID_REFERENCE",
                 )
-            for a in output.assessments:
-                support, counter = (
-                    set(a.supporting_observation_ids),
-                    set(a.counterexample_observation_ids),
-                )
-                if not (support | counter) <= allowed or support & counter:
-                    session.fail(
-                        "패턴 재검토의 근거 참조가 올바르지 않습니다.",
-                        stage="assess",
-                        internal_code="INVALID_REFERENCE",
-                    )
-                assessments[a.proposal_index]["support"].update(support)
-                assessments[a.proposal_index]["counter"].update(counter)
+            assessments[a.proposal_index]["support"].update(support)
+            assessments[a.proposal_index]["counter"].update(counter)
 
     by_id = {o.observation_id: o for o in observations}
     position = {o.observation_id: i for i, o in enumerate(observations)}
@@ -328,12 +376,15 @@ def run_character_memory(
     chunk_chars: int = 6000,
     batch_chars: int = 12000,
     max_llm_calls: int = 200,
+    economy: bool = False,
 ) -> dict:
     """scenes는 현행 원고의 모든 장면이다. 생략한 장면은 삭제한 것으로 처리한다.
 
     scene_id/revision/order/text는 필수. 실패 시 details.checkpoint를 previous_memory로 넘겨 재개한다.
     호출 예산은 논리적 요청 수(SDK 재시도 별도)이며 캐시 적중은 세지 않는다.
+    economy는 관찰과 화자 검증을 만들고 기존 패턴이 있는 동일 스냅샷을 재사용한다.
     """
+    expect_type(economy, bool, "economy")
     expect_text(project_id, "project_id")
     if len(project_id.strip()) > 200:
         raise InputValidationError("project_id는 200자 이하여야 합니다.")
@@ -356,8 +407,25 @@ def run_character_memory(
     unique(sources, "order")
     if sources and not roster:
         raise InputValidationError("원고를 분석하려면 인물 목록이 필요합니다.")
+    previous = None if previous_memory is None else validate_memory(previous_memory)
+    if previous is not None and previous.project_id != project_id.strip():
+        raise InputValidationError("다른 프로젝트의 기억을 재사용할 수 없습니다.")
+    current_snapshot = snapshot_id(project_id.strip(), roster, sources)
+    current_mode = "fake" if os.environ.get("USE_FAKE_LLM") == "1" else "real"
+    if (
+        economy
+        and previous
+        and previous.snapshot_id == current_snapshot
+        and previous.mode == current_mode
+        and previous.speaker_verification_version == "v1"
+        and set(previous.processed_scene_ids) == {scene.scene_id for scene in sources}
+    ):
+        previous.complete = True
+        validate_memory(previous, require_complete=True)
+        return make_success(previous.model_dump(), Session(previous, max_llm_calls).meta)
+
     try:
-        config = get_llm_config()
+        config = get_llm_config(simple_query=economy)
     except LLMFailedError as exc:
         return make_error(ErrorCode.AI_ANALYSIS_FAILED, str(exc))
     analysis_key = digest(
@@ -375,26 +443,24 @@ def run_character_memory(
             batch_chars,
         ]
     )
-    previous = None if previous_memory is None else validate_memory(previous_memory)
-    if previous is not None and previous.project_id != project_id.strip():
-        raise InputValidationError("다른 프로젝트의 기억을 재사용할 수 없습니다.")
     memory = Memory(
         project_id=project_id.strip(),
         characters=roster,
         scenes=sources,
-        snapshot_id=snapshot_id(project_id.strip(), roster, sources),
+        snapshot_id=current_snapshot,
         analysis_key=analysis_key,
         model=config.model,
-        mode="fake" if os.environ.get("USE_FAKE_LLM") == "1" else "real",
+        mode=current_mode,
         call_cache=dict(previous.call_cache)
         if previous and previous.analysis_key == analysis_key
         else {},
     )
-    session = Session(memory, max_llm_calls)
+    session = Session(memory, max_llm_calls, simple_query=economy)
     try:
         _extract(session, chunk_chars)
         verify_speakers(session)
-        _synthesize(session, batch_chars)
+        if not economy:
+            _synthesize(session, batch_chars)
     except AnalysisStopped as exc:
         # 실패 중인 장면에서 얻은 부분 관찰은 출처 검증이 가능한 완료 장면까지만 보존.
         processed = set(memory.processed_scene_ids)
