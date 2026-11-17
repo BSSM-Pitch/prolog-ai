@@ -50,7 +50,7 @@ def test_sentence_rows_preserve_small_details_without_reprinting_source():
 def test_invalid_alias_preserves_literal_subject_and_paid_observations(known_count, alias):
     _, _, batch = setup("민서가 걸었다. 민서는 고개를 들었다.")
     batch["known_people"] = [{"name": "지훈", "aliases": []}][:known_count]
-    person = {"name": "민서", "alias": alias, "u": 0}
+    person = {"name": "민서", "kind": "ambiguous", "alias": alias, "u": 0}
     raw = {
         "people": [person],
         "rows": [[u, known_count, 1, 0, 0, 1] for u in batch["target_ids"]],
@@ -386,3 +386,35 @@ def test_extra_verifier_index_is_audited_without_losing_valid_paid_decisions():
         p, wire.verification_response(p, raw, proof_lengths=True)
     )
     assert compact.missing_verifications(p, partial) == [1]
+
+
+@pytest.mark.parametrize("designation", ["어머니", "선생님", "선장", "박 기사"])
+def test_unknown_identity_does_not_turn_a_designation_into_a_new_person(designation):
+    _, _, batch = setup(f"정유진의 {designation}는 오세란이었다.")
+    batch["known_people"] = []
+    raw = {
+        "people": [
+            {"name": "정유진", "kind": "named_person", "alias": -1, "u": 0},
+            {"name": "오세란", "kind": "named_person", "alias": -1, "u": 0},
+            {"name": designation, "kind": "ambiguous", "alias": -1, "u": 0},
+        ],
+        "rows": [],
+        "skip": batch["target_ids"],
+    }
+    result = wire.extraction_response(batch, raw)
+    assert [p["kind"] for p in result["people"]] == ["named_person", "named_person", "ambiguous"]
+    # A missing classification is not proof that the name is a distinct person.
+    del raw["people"][2]["kind"]
+    assert wire.extraction_response(batch, raw)["people"][2]["kind"] == "ambiguous"
+    # Explicit contextual identity overrides an inconsistent named-person label.
+    raw["people"][2]["kind"] = "named_person"
+    raw["identities"] = [
+        {
+            "units": batch["target_ids"],
+            "reference": 2,
+            "relative_to": 0,
+            "canonical": 1,
+            "evidence": [0],
+        }
+    ]
+    assert wire.extraction_response(batch, raw)["people"][2]["kind"] == "ambiguous"

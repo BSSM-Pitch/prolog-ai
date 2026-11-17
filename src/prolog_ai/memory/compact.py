@@ -30,7 +30,7 @@ from prolog_ai.memory.schema import (
 )
 from prolog_ai.memory.source import encode, identity, quote_start, snapshot_id, validate_memory
 
-VERSION = "compact-memory-v10"
+VERSION = "compact-memory-v11"
 SYNTHESIS_VERSION = "shared-prefix-v1"
 BATCH_CHARS = 12000
 UNIT_CHARS = 500
