@@ -1,6 +1,7 @@
 """Source-anchored verification with literal names, separate from legacy numeric rows."""
 
 from collections import Counter
+from typing import Annotated
 
 from pydantic import Field
 
@@ -43,6 +44,21 @@ class ContextResolution(Model):
 
 class ContextVerification(Verification):
     resolutions: list[ContextResolution] = Field(default_factory=list, max_length=2000)
+
+
+class CompactContextVerification(Model):
+    # Preserve literal target keys and names. Only remove repeated JSON keys;
+    # do not replace source-addressed names with error-prone numeric person IDs.
+    rows: list[Annotated[list[str | int | None], Field(min_length=4, max_length=4)]] = Field(max_length=2000)
+    links: list[Binding] = Field(max_length=100)
+    resolutions: list[ContextResolution] = Field(default_factory=list, max_length=2000)
+
+
+COMPACT_INSTRUCTION = """
+출력 rows는 객체 대신 [r, c, e, n] 네 칸 배열이다. 예: ["T288.210", "민서", "U287", 2].
+r와 e는 원문 키 문자열, c는 실제 이름 문자열 또는 null, n은 연속 근거 수 정수다.
+links와 resolutions는 도구 스키마 그대로 반환한다. 원문 키·이름·근거 검증은 동일하다.
+"""
 
 
 INSTRUCTION = """소설 원문에서 각 target의 실제 주체와 호칭의 정체를 검증한다.
@@ -177,6 +193,9 @@ def response(payload, raw):
     from prolog_ai.memory.compact import evidence
     from prolog_ai.memory.identity_context import validate_resolutions
 
+    if any(isinstance(row, list) for row in raw.get("rows", [])):
+        packed = CompactContextVerification.model_validate(raw)
+        raw = {**packed.model_dump(), "rows": [dict(zip(("r", "c", "e", "n"), row, strict=True)) for row in packed.rows]}
     data = ContextVerification.model_validate(raw)
     targets = {target_key(o): o for o in payload["observations"]}
     units = {f"U{u['id']}": u["id"] for u in payload["units"]}

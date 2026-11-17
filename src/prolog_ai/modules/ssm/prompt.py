@@ -54,9 +54,24 @@ edges: [{from_node_id: "node_1", to_node_id: "node_2", relation: "causes"}]
 
 
 def build_prompt(data: dict) -> str:
+    from prolog_ai.memory.sections import sections
+
+    parts = sections(data["chapter_text"])
+    instruction = INSTRUCTION
+    if len(parts) > 1:
+        budget = min(40, max(5, (len(parts) + 3) // 4))
+        instruction = instruction.replace("1~5개", f"1~{budget}개").replace(
+            "순서대로 둘까지", "순서대로 다섯까지"
+        )
+        instruction += (
+            "\n이 저장 챕터 안에는 여러 회차가 있다. 앞·중간·후반의 주요 전환을 고르게 살핀다. "
+            "nodes.title 앞에 원문 회차 표기(예: 12화)를 붙인다. "
+            "chapter 번호는 저장 챕터 번호 그대로다. 후반에서 다시 시작하는 회차별 기획 메모는 "
+            "확정된 작중 사건으로 단정하지 않는다. 사건이 적으면 개수를 채우지 않는다.\n"
+        )
     roster = "\n".join(f"- {c['character_id']}: {c['name']}" for c in data["characters"])
     return (
-        f"{INSTRUCTION}\n"
+        f"{instruction}\n"
         f"<characters>\n{roster or '(목록 없음 — character_ids는 빈 배열)'}\n</characters>\n"
         f"<chapter_number>{data['chapter']}</chapter_number>\n"
         f"<chapter>\n{data['chapter_text']}\n</chapter>"

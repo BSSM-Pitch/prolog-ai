@@ -110,7 +110,7 @@ def test_live_step_uses_new_contract_in_one_existing_request(monkeypatch):
     monkeypatch.delenv("USE_FAKE_LLM", raising=False)
 
     def response(prompt, **kwargs):
-        assert kwargs["schema"] is wire.Verification
+        assert kwargs["schema"] is wire.CompactContextVerification
         assert "T1.1" in prompt and "U1" in prompt
         return {"rows": [{"r": "T1.1", "c": "민서", "e": "U0", "n": 2}], "links": []}
 

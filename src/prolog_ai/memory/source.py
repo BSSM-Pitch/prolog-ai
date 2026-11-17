@@ -39,10 +39,19 @@ def unique(items, attribute: str):
         raise InputValidationError(f"{attribute}가 중복되었습니다.", {"field": attribute})
 
 
+def scene_snapshot(scene):
+    value = scene.model_dump()
+    if value.get("source_start") == 0:
+        value.pop("source_start", None)
+    if value.get("chapter_no") is None:
+        value.pop("chapter_no", None)
+    return value
+
+
 def snapshot_id(project_id, characters, scenes):
     return identity(
         "memory",
-        [project_id, [c.model_dump() for c in characters], [s.model_dump() for s in scenes]],
+        [project_id, [c.model_dump() for c in characters], [scene_snapshot(s) for s in scenes]],
     )
 
 
