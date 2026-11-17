@@ -5,7 +5,7 @@ never character offsets or a paraphrase pretending to be a source quotation.
 """
 
 import re
-from typing import Annotated
+from typing import Annotated, Literal
 
 from pydantic import Field
 
@@ -19,6 +19,10 @@ DETAIL = re.compile(r'["“”「」]|버릇|습관|말투|말버릇|무의식|�
 
 class NewPerson(Model):
     name: str = Field(min_length=1, max_length=100)
+    kind: Literal["named_person", "ambiguous"] = Field(
+        default="ambiguous",
+        description="Explicit personal name or ambiguous title, kinship term, or uncertain name",
+    )
     alias: int = Field(ge=-1, description="known person ID; -1 if unknown/new")
     u: int = Field(ge=0, description="unit containing this literal name")
 
@@ -68,6 +72,9 @@ evidence=관계와 이름을 확인하는 원문 unit들(최대 8개, 떨어진 
 rows의 주체도 확인된 정식 인물 번호로 쓴다. identities는 별도 새 인물 생성이 아니다.
 원문 문맥상 명확한 기존 인물은 known 번호를 쓴다. 새 이름/축약 호칭은 people에
 이름과 실제 등장 unit(u), 동일인 후보 alias(known 번호 또는 -1)를 넣는다.
+kind는 원문에 명시된 고유 인명이면 named_person, 호칭·직함·관계명·축약 표기면 ambiguous다.
+alias=-1은 기존 인물 번호를 모른다는 뜻이며, 이름이 확정됐다는 뜻이 아니다.
+호칭의 정체가 밝혀져도 호칭 자체를 새 고유 인명으로 등록하지 않는다.
 새 people의 번호는 len(known)+배열 위치다. 근거 없이 성을 붙이지 않는다.
 new_person_start가 첫 새 인물 번호다. people에 선언하지 않은 번호는 쓰지 않는다.
 rows의 각 행 = [unit,인물번호,종류,표현,행동역할,확실성,청자번호...(없으면 생략)].
@@ -346,6 +353,7 @@ def extraction_response(payload: dict, raw: dict) -> dict:
     names = known + [p.name for p in data.people]
     identities, identity_audit = scoped_identities(payload, data, names)
     scopes = unresolved_identity_scopes(payload, data, names)
+    references = {link.reference for link in data.identities if link.reference != link.canonical}
     people = [
         {
             "name": p.name,
@@ -353,11 +361,11 @@ def extraction_response(payload: dict, raw: dict) -> dict:
             # every otherwise valid observation in this paid response. Alias
             # IDs address known people only; never reinterpret them as new IDs.
             "alias_of": name_at(known, p.alias) if p.alias < len(known) else None,
-            "kind": "ambiguous" if p.alias >= 0 else "named_person",
+            "kind": "ambiguous" if p.alias >= 0 or len(known) + i in references else p.kind,
             "e": p.u,
             "reason": "원문에서 발견한 이름/호칭",
         }
-        for p in data.people
+        for i, p in enumerate(data.people)
     ]
     units = {u["id"]: u for u in payload["units"]}
     targets = set(payload["target_ids"])
