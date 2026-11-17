@@ -82,6 +82,8 @@ known과 people은 동일한 이름 공간이다. 같은 호칭을 서로 다른
 서로 다른 구간에서 발견한 이름도 people에 있다. 목록에 있다는 사실만으로 동일인이라 판단하지 않는다.
 근거는 반드시 target이 붙은 원문 U키(별도 units가 있으면 그 전체)를 포함하고 필요한 앞뒤 문맥을 덧붙인다.
 e=첫 U키, n=연속 문장 수(1..8). 근거가 target과 겹치지 않으면 해당 판정을 반환하지 않는다.
+e부터 n개 원문은 모두 target과 같은 chapter여야 한다. 앞뒤 회차는 문맥으로 읽되
+회차 경계를 넘어 하나의 연속 근거로 반환하지 않는다. 근거를 정할 때 chapter 값을 확인한다.
 확정 못한 경우에도 target 자체를 근거로 c=null을 반환한다.
 links는 alias_names 각각에 대해 name, canonical(known의 이름 또는 null), evidence(U키)를 반환한다.
 binding_candidates는 각 축약 이름의 정식 이름 후보이며 정답은 아니다. 원문으로 검증한다.

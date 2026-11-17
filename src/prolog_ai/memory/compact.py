@@ -31,7 +31,7 @@ from prolog_ai.memory.schema import (
 from prolog_ai.memory.source import encode, identity, quote_start, snapshot_id, validate_memory
 
 VERSION = "compact-memory-v12"
-SYNTHESIS_VERSION = "shared-prefix-v1"
+SYNTHESIS_VERSION = "shared-prefix-subjects-v2"
 BATCH_CHARS = 12000
 UNIT_CHARS = 500
 MAX_STEPS = 20
@@ -380,6 +380,12 @@ def check(stage: str, payload: dict, raw: dict) -> dict:
             else [Proposal.model_validate(p) for p in payload["proposals"]]
         )
         for p in proposals:
+            if (
+                stage == "propose"
+                and payload.get("requested_subjects") is not None
+                and p.c not in pattern_subjects(payload)
+            ):
+                raise ValueError("Pattern outside requested subjects")
             if p.c not in {c["i"] for c in payload["characters"]}:
                 raise ValueError("Invalid pattern character")
             if any(i not in records or records[i]["c"] != p.c for i in p.seeds):
@@ -573,6 +579,22 @@ def merge_extractions(
     return check("extract", {**batch, "allow_partial": not require_complete}, result)
 
 
+def pattern_subjects(payload: dict) -> list[int] | None:
+    subjects = payload.get("requested_subjects")
+    if subjects is None:
+        return None
+    known = {c["i"] for c in payload["characters"]}
+    if (
+        not isinstance(subjects, list)
+        or not subjects
+        or any(type(i) is not int for i in subjects)
+        or len(set(subjects)) != len(subjects)
+        or not set(subjects) <= known
+    ):
+        raise ValueError("Invalid requested pattern subjects")
+    return subjects
+
+
 def run_step(stage: str, payload: dict) -> dict:
     policy = current_policy.get()
     if policy is None:
@@ -607,6 +629,13 @@ def run_step(stage: str, payload: dict) -> dict:
         schema = PatternTurn
         prefix = SYNTHESIS_PREFIX + encode(wire)
         prompt = prefix + "\n작업:\n" + instruction
+        if stage == "propose" and (subjects := pattern_subjects(payload)) is not None:
+            prompt += (
+                "\n이번 응답에서는 requested_subjects에 지정된 인물의 후보만 작성한다. "
+                "공통 자료의 모든 인물·모든 회차를 읽고 작가 공통 문체와 반례를 함께 살핀다. "
+                "다른 인물은 별도 요청에서 분석하므로 이번 응답에 중복 작성하지 않는다.\n"
+                + encode({"requested_subjects": subjects})
+            )
         if candidates is not None:
             prompt += "\n후보:\n" + encode(candidates)
     elif stage == "verify":
