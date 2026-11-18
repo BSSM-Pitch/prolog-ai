@@ -19,6 +19,7 @@ from typing import Any
 
 from pydantic import BaseModel
 
+from prolog_ai.core.fiction_scope import FICTION_SCOPE_POLICY
 from prolog_ai.core.request_policy import current_policy
 
 OPENAI_BASE_URL = "https://api.openai.com/v1"
@@ -213,6 +214,7 @@ def _request_with_client(client, config, prompt, schema, timeout, max_retries):
             if config.provider == "openai":
                 response = client.responses.create(
                     model=config.model,
+                    instructions=FICTION_SCOPE_POLICY,
                     input=request_input,
                     max_output_tokens=output_limit,
                     reasoning={"effort": config.reasoning_effort},
@@ -236,7 +238,10 @@ def _request_with_client(client, config, prompt, schema, timeout, max_retries):
                     max_tokens=output_limit,
                     temperature=config.temperature,
                     top_p=config.top_p,
-                    messages=[{"role": "user", "content": prompt}],
+                    messages=[
+                        {"role": "system", "content": FICTION_SCOPE_POLICY},
+                        {"role": "user", "content": prompt},
+                    ],
                     tools=[
                         {
                             "type": "function",
