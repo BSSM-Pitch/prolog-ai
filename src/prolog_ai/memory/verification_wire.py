@@ -3,7 +3,7 @@
 from collections import Counter
 from typing import Annotated
 
-from pydantic import Field
+from pydantic import Field, ValidationError
 
 from prolog_ai.memory.schema import Model
 
@@ -49,7 +49,12 @@ class ContextVerification(Verification):
 class CompactContextVerification(Model):
     # Preserve literal target keys and names. Only remove repeated JSON keys;
     # do not replace source-addressed names with error-prone numeric person IDs.
-    rows: list[Annotated[list[str | int | None], Field(min_length=4, max_length=4)]] = Field(max_length=2000)
+    rows: list[
+        Annotated[
+            list[str | Annotated[int, Field(ge=1, le=8, strict=True)] | None],
+            Field(min_length=4, max_length=4),
+        ]
+    ] = Field(max_length=2000)
     links: list[Binding] = Field(max_length=100)
     resolutions: list[ContextResolution] = Field(default_factory=list, max_length=2000)
 
@@ -195,13 +200,41 @@ def response(payload, raw):
     from prolog_ai.memory.compact import evidence
     from prolog_ai.memory.identity_context import validate_resolutions
 
-    if any(isinstance(row, list) for row in raw.get("rows", [])):
-        packed = CompactContextVerification.model_validate(raw)
-        raw = {**packed.model_dump(), "rows": [dict(zip(("r", "c", "e", "n"), row, strict=True)) for row in packed.rows]}
-    data = ContextVerification.model_validate(raw)
+    # Validate the envelope, then isolate malformed rows. A single bad proof must
+    # never discard hundreds of independently valid decisions (or their cost).
+    if not isinstance(raw, dict) or not isinstance(raw.get("rows"), list):
+        raise TypeError("Invalid verification envelope")
+    if len(raw["rows"]) > 2000 or set(raw) - {"rows", "links", "resolutions"}:
+        raise ValueError("Invalid verification envelope")
     targets = {target_key(o): o for o in payload["observations"]}
     units = {f"U{u['id']}": u["id"] for u in payload["units"]}
-    counts = Counter(d.r for d in data.rows)
+    parsed, malformed, counts = [], [], Counter()
+    for original in raw["rows"]:
+        row = original
+        key = (
+            row.get("r")
+            if isinstance(row, dict)
+            else row[0]
+            if isinstance(row, list) and row
+            else None
+        )
+        if isinstance(key, str):
+            counts[key] += 1  # Count malformed duplicates too: never select the convenient one.
+        try:
+            if isinstance(row, list):
+                if len(row) != 4:
+                    raise ValueError("Expected four fields")
+                row = dict(zip(("r", "c", "e", "n"), row, strict=True))
+            parsed.append(Decision.model_validate(row))
+        except (ValueError, ValidationError):
+            malformed.append(
+                {
+                    "target_key": key if isinstance(key, str) else None,
+                    "reason": "Invalid verification row",
+                    "response": original,
+                }
+            )
+    data = ContextVerification.model_validate({**raw, "rows": parsed})
     decisions, invalid, unexpected, seen = [], [], [], set()
     for d in data.rows:
         if d.r not in targets:
@@ -281,6 +314,7 @@ def response(payload, raw):
         "bindings": bindings,
         "validation_audit": {
             "target_keys_validated": True,
+            "malformed_rows": malformed,
             "verification_protocol": VERSION,
             "context_resolution_proposals": proposals,
             "invalid_context_resolutions": invalid_resolutions,

@@ -541,3 +541,55 @@ def test_user_instructions_cannot_replace_product_system_policy(fake_client, mon
     messages = fake_client.calls[0]["messages"]
     assert messages[0] == {"role": "system", "content": llm.FICTION_SCOPE_POLICY}
     assert messages[1] == {"role": "user", "content": injection}
+
+
+def test_response_stream_forwards_real_deltas_and_accounts_terminal_usage():
+    from prolog_ai.core.request_policy import RequestPolicy, request_policy
+
+    previews, usage, calls = [], [], []
+    terminal = SimpleNamespace(
+        status="completed",
+        incomplete_details=None,
+        usage=SimpleNamespace(model_dump=lambda: {"input_tokens": 4, "output_tokens": 2}),
+        output=[SimpleNamespace(type="function_call", name="respond", arguments='{"value":"ok"}')],
+    )
+    stream = FakeStream(
+        [
+            SimpleNamespace(
+                type="response.function_call_arguments.delta", item_id="one", delta='{"value":"'
+            ),
+            SimpleNamespace(
+                type="response.function_call_arguments.delta", item_id="one", delta='ok"}'
+            ),
+            SimpleNamespace(type="response.completed", response=terminal),
+        ]
+    )
+
+    def create(**kwargs):
+        calls.append(kwargs)
+        return stream
+
+    client = SimpleNamespace(responses=SimpleNamespace(create=create))
+    config = llm.LLMConfig("openai", llm.OPENAI_BASE_URL, "gpt-6.1-sol", "UNUSED", 0, 1, "low")
+    with request_policy(
+        RequestPolicy(lambda: None, on_usage=usage.append, on_arguments=previews.append)
+    ):
+        assert llm._request_with_client(client, config, "p", Output, 30, 0) == {"value": "ok"}
+    assert calls[0]["stream"] is True
+    assert previews == ["", '{"value":"', '{"value":"ok"}']
+    assert stream.closed and usage == [{"input_tokens": 4, "output_tokens": 2}]
+
+
+def test_incomplete_stream_never_becomes_a_completed_answer():
+    import time
+
+    stream = FakeStream(
+        [
+            SimpleNamespace(
+                type="response.function_call_arguments.delta", item_id="x", delta='{"value":"half'
+            )
+        ]
+    )
+    with pytest.raises(LLMFailedError, match="terminal"):
+        llm._collect_response_stream(stream, lambda _: None, 30, time.monotonic())
+    assert stream.closed

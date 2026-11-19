@@ -13,6 +13,7 @@ class RequestPolicy:
     on_usage: Callable[[dict[str, Any]], None] | None = None
     max_output_tokens: int = 32768
     prompt_cache_prefix: str | None = None
+    on_arguments: Callable[[str], None] | None = None
 
 
 current_policy: ContextVar[RequestPolicy | None] = ContextVar("llm_request_policy", default=None)
