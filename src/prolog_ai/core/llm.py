@@ -209,6 +209,8 @@ def _request_with_client(client, config, prompt, schema, timeout, max_retries):
             policy.before_attempt()
         if attempt > 0:
             sleep_before_retry(attempt - 1)
+        if policy and policy.on_arguments:
+            policy.on_arguments("")
         attempt_started = time.monotonic()
         try:
             if config.provider == "openai":
@@ -230,8 +232,13 @@ def _request_with_client(client, config, prompt, schema, timeout, max_retries):
                     tool_choice={"type": "function", "name": "respond"},
                     parallel_tool_calls=False,
                     store=False,
+                    **({"stream": True} if policy and policy.on_arguments else {}),
                     **cache_options,
                 )
+                if policy and policy.on_arguments:
+                    response = _collect_response_stream(
+                        response, policy.on_arguments, timeout, attempt_started
+                    )
             else:
                 response = client.chat.completions.create(
                     model=config.model,
@@ -320,6 +327,30 @@ def _request_with_client(client, config, prompt, schema, timeout, max_retries):
     if timed_out:
         raise LLMTimeoutError(str(last_error)) from last_error
     raise LLMFailedError(str(last_error)) from last_error
+
+
+def _collect_response_stream(stream, on_arguments, timeout, started):
+    """Forward real function argument deltas; still validate the terminal response."""
+    arguments = ""
+    response = None
+    call_id = None
+    try:
+        for event in stream:
+            if time.monotonic() - started > timeout:
+                raise LLMTimeoutError("Streaming response deadline exceeded")
+            if event.type == "response.function_call_arguments.delta":
+                if call_id is not None and call_id != event.item_id:
+                    raise LLMFailedError("Unexpected multiple streamed tool calls")
+                call_id = event.item_id
+                arguments += event.delta
+                on_arguments(arguments)
+            elif event.type in {"response.completed", "response.incomplete", "response.failed"}:
+                response = event.response
+        if response is None:
+            raise LLMFailedError("Stream ended without a terminal response")
+        return response
+    finally:
+        stream.close()
 
 
 def _collect_stream(stream, timeout, *, started=None):

@@ -58,3 +58,30 @@ def test_ssm_expands_events_for_internal_episodes_without_extra_model_calls():
     assert "1~23개" in prompt
     assert "회차 표기" in prompt
     assert "<chapter_number>1</chapter_number>" in prompt
+
+
+def test_bad_row_preserves_good_rows_and_repairs_only_affected_targets():
+    import pytest
+    from pydantic import ValidationError
+
+    _, _, _, p = fixture()
+    p["observations"] = p["observations"][:2]
+    for bad in (9, 10, 0, True, "2", None):
+        raw = {"rows": [["T0.0", "민서", "U0", 1], ["T1.1", "민서", "U0", bad]], "links": []}
+        result = compact.validate_verification(p, wire.response(p, raw))
+        assert compact.missing_verifications(p, result) == [1]
+        assert result["decisions"][0]["c"] == "민서"
+        assert result["validation_audit"]["malformed_rows"]
+    for bad in (9, 10, 0, True):
+        with pytest.raises(ValidationError):
+            wire.CompactContextVerification.model_validate(
+                {"rows": [["T0.0", "민서", "U0", bad]], "links": []}
+            )
+
+
+def test_malformed_duplicate_cannot_confirm_the_valid_duplicate():
+    _, _, _, p = fixture()
+    p["observations"] = p["observations"][:1]
+    raw = {"rows": [["T0.0", "민서", "U0", 1], ["T0.0", "민서", "U0", 99]], "links": []}
+    result = compact.validate_verification(p, wire.response(p, raw))
+    assert compact.missing_verifications(p, result) == [0]
